@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="GoProfileHistory">
+    <profile entry="$USER_HOME$/GoLandProfiles/go_test_plumber-go-cpu_profile-2026-05-23-000322-792.pprof">
+      <GoProfileMapEntry>
+        <option name="buildAnchorMillis" value="1779483802806" />
+        <option name="file" value="go_test_plumber-go-cpu_profile-2026-05-23-000322-792.pprof" />
+        <option name="ours" value="true" />
+      </GoProfileMapEntry>
+    </profile>
+  </component>
+</project>
