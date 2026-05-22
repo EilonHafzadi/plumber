@@ -27,7 +27,8 @@ func initSettings(settingsPath string) error {
 	viper.SetConfigType("toml")
 	viper.AddConfigPath(settingsPath)
 
-	if err := viper.ReadInConfig(); err != nil {
+	err := viper.ReadInConfig()
+	if err != nil {
 		return fmt.Errorf("failed to read settings: %w", err)
 	}
 
@@ -100,6 +101,7 @@ func getJobId(request *RetryRequest) (int, error) {
 
 func retryJob(request *RetryRequest) error {
 	_, _, err := jobsService.RetryJob(request.ProjectId, int64(request.JobId))
+
 	if err != nil {
 		return fmt.Errorf("failed to retry job: %w", err)
 	}
@@ -108,7 +110,6 @@ func retryJob(request *RetryRequest) error {
 }
 
 func onMRComment(responseWriter http.ResponseWriter, retryRequest *RetryRequest) {
-
 	jobId, err := getJobId(retryRequest)
 	if err != nil {
 		http.Error(responseWriter, "failed to retrieve job id: "+err.Error(), http.StatusInternalServerError)
@@ -129,7 +130,8 @@ func onMRComment(responseWriter http.ResponseWriter, retryRequest *RetryRequest)
 func onRetryRequest(responseWriter http.ResponseWriter, httpRequest *http.Request) {
 	var retryRequest RetryRequest
 
-	if err := json.NewDecoder(httpRequest.Body).Decode(&retryRequest); err != nil {
+	err := json.NewDecoder(httpRequest.Body).Decode(&retryRequest)
+	if err != nil {
 		http.Error(responseWriter, "failed to decode request body", http.StatusBadRequest)
 		return
 	}
@@ -148,11 +150,15 @@ func onRetryRequest(responseWriter http.ResponseWriter, httpRequest *http.Reques
 }
 
 func main() {
-	if err := initSettings("."); err != nil {
+	err := initSettings(".")
+
+	if err != nil {
 		log.Fatal(err)
 	}
 
-	if err := initGitlabClient(); err != nil {
+	err = initGitlabClient()
+
+	if err != nil {
 		log.Fatal(err)
 	}
 
@@ -161,7 +167,9 @@ func main() {
 	serverAddress := fmt.Sprintf("%s:%d", settings.ServerIP, settings.ServerPort)
 	fmt.Printf("server has started on address: %s\n", serverAddress)
 
-	if err := http.ListenAndServe(serverAddress, nil); err != nil {
+	err = http.ListenAndServe(serverAddress, nil)
+
+	if err != nil {
 		log.Fatal("failed to start http server: " + err.Error())
 	}
 
