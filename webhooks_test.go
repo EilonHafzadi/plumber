@@ -1,0 +1,146 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"testing/iotest"
+
+	"github.com/stretchr/testify/assert"
+	gitlab "gitlab.com/gitlab-org/api/client-go/v2"
+	gitlabtesting "gitlab.com/gitlab-org/api/client-go/v2/testing"
+)
+
+func setupSettings(t *testing.T) {
+	err := initSettings(".")
+	if err != nil {
+		t.Fatal("failed to init settings: " + err.Error())
+	}
+
+}
+
+func setupLogger(t *testing.T) {
+	err := initLogger()
+	if err != nil {
+		t.Fatal("failed to init logger: " + err.Error())
+	}
+
+}
+
+func basePayload(objectKind string, note string, headPipelineId int) string {
+	return `{
+		"object_kind": "` + objectKind + `",
+		"project_id": 83,
+		"object_attributes": {
+			"note": "` + note + `",
+			"noteable_type": "MergeRequest"
+		},
+		"merge_request": {
+			"head_pipeline_id": ` + fmt.Sprintf("%d", headPipelineId) + `
+		}
+	}`
+}
+
+func sendRequest(client *gitlabtesting.TestClient, request *http.Request) *httptest.ResponseRecorder {
+	recorder := httptest.NewRecorder()
+	processWebhook(client.Client, recorder, request)
+	return recorder
+}
+
+func assertNextMessage(t *testing.T, expected string, recorder *httptest.ResponseRecorder) {
+	body, err := io.ReadAll(recorder.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msg := string(body)
+	assert.Equal(t, expected, msg)
+}
+
+func TestBotMention_ExactMatch_Triggers(t *testing.T) {
+	setupLogger(t)
+	setupSettings(t)
+
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+
+	client.MockJobs.EXPECT().
+		ListPipelineJobs(83, int64(1), nil).
+		Return([]*gitlab.Job{{ID: 1, Name: settings.JobName}}, &gitlab.Response{}, nil)
+
+	client.MockJobs.EXPECT().
+		RetryJob(83, int64(1)).
+		Return(&gitlab.Job{ID: 1}, &gitlab.Response{}, nil)
+
+	payload := basePayload("note", fmt.Sprintf("@%s retry", settings.BotName), 1)
+	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(payload))
+
+	rec := sendRequest(client, request)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+
+}
+
+func TestProcessWebhook_InvalidObjectKind_DoesNotRetry(t *testing.T) {
+	setupLogger(t)
+	setupSettings(t)
+
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+
+	payload := basePayload("push", fmt.Sprintf("@%s retry", settings.BotName), 1)
+	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(payload))
+	rec := sendRequest(client, request)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected %d but got %d", http.StatusBadRequest, rec.Code)
+	}
+
+	assertNextMessage(t, "unsupported webhook type\n", rec)
+}
+
+func TestProcessWebhook_InvalidPayload_DoesNotRetry(t *testing.T) {
+	setupLogger(t)
+	setupSettings(t)
+
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+
+	request := httptest.NewRequest(http.MethodPost, "/webhook", iotest.ErrReader(errors.New("boom")))
+	recorder := sendRequest(client, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Errorf("expected %d but got %d", http.StatusBadRequest, recorder.Code)
+	}
+
+	assertNextMessage(t, "failed to read body\n", recorder)
+}
+
+func TestProcessWebhook_InvalidJson_DoesNotRetry(t *testing.T) {
+	setupLogger(t)
+	setupSettings(t)
+
+	payload := `{
+		"object_kind": "` + "note" + `",
+		"project_id": 83,
+		"object_attributes": {
+			"note": "` + "hello world" + `",
+			"noteable_type": "MergeRequest"
+		},
+		"merge_request": {
+			"head_pipeline_id": ` + fmt.Sprintf("%d", 1) + `
+	}`
+
+	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(payload))
+
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	recorder := sendRequest(client, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Errorf("expected %d but got %d", http.StatusBadRequest, recorder.Code)
+	}
+
+	assertNextMessage(t, "failed to decode webhook\n", recorder)
+}

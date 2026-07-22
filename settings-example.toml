@@ -1,7 +1,9 @@
 server_ip = "0.0.0.0"
 server_port = 8080
+
 job_name = "job_test"
-bot_name = "plumber"
+bot_name = "mreasternman"
+retry_amount = 3
 
 gitlab_instance = "https://gitlab.com"
-access_token ="example-access-token"
+access_token = "example-access-token"0
