@@ -2,11 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go/v2"
+	"go.uber.org/zap"
 )
 
 type GitlabWebhook struct {
@@ -16,8 +18,6 @@ type GitlabWebhook struct {
 
 type CommentWebhook struct {
 	GitlabWebhook
-
-	JobId int64
 
 	ObjectAttributes struct {
 		Note         string `json:"note"`
@@ -38,6 +38,30 @@ type JobWebhook struct {
 	Name       string `json:"build_name"`
 }
 
+func getJobId(gitlabClient *gitlab.Client, webhook *CommentWebhook) (int64, error) {
+	jobs, _, err := gitlabClient.Jobs.ListPipelineJobs(
+		webhook.ProjectId,
+		int64(webhook.MergeRequest.HeadPipelineId),
+		nil,
+	)
+
+	if err != nil {
+		return -1, err
+	}
+
+	if len(jobs) == 0 {
+		return -1, fmt.Errorf("no jobs found for pipeline %d", webhook.MergeRequest.HeadPipelineId)
+	}
+
+	for _, job := range jobs {
+		if job.Name == settings.JobName {
+			return job.ID, nil
+		}
+	}
+
+	return -1, fmt.Errorf("no job with name %s", settings.JobName)
+}
+
 func onMRComment(gitlabClient *gitlab.Client, r http.ResponseWriter, commentWebhook *CommentWebhook) {
 	jobId, err := getJobId(gitlabClient, commentWebhook)
 	if err != nil {
@@ -45,9 +69,7 @@ func onMRComment(gitlabClient *gitlab.Client, r http.ResponseWriter, commentWebh
 		return
 	}
 
-	commentWebhook.JobId = jobId
-
-	_, err = retryJob(gitlabClient, commentWebhook.ProjectId, commentWebhook.JobId)
+	_, err = retryJob(gitlabClient, commentWebhook.ProjectId, jobId)
 
 	if err != nil {
 		http.Error(r, "failed to retry job: "+err.Error(), http.StatusInternalServerError)
@@ -67,6 +89,7 @@ func handleCommentWebhook(gitlabClient *gitlab.Client, w http.ResponseWriter, bo
 	}
 
 	if commentWebhook.ObjectAttributes.NoteableType != "MergeRequest" {
+		http.Error(w, "comment is not merge request comment", http.StatusBadRequest)
 		return
 	}
 
@@ -77,6 +100,28 @@ func handleCommentWebhook(gitlabClient *gitlab.Client, w http.ResponseWriter, bo
 		onMRComment(gitlabClient, w, &commentWebhook)
 	}
 
+}
+
+func handleJobWebhook(gitlabClient *gitlab.Client, w http.ResponseWriter, body []byte) {
+	var jobWebhook JobWebhook
+
+	err := json.Unmarshal(body, &jobWebhook)
+	if err != nil {
+		http.Error(w, "failed to decode job webhook", http.StatusBadRequest)
+		return
+	}
+
+	jobName := jobWebhook.Name
+
+	if jobWebhook.Status == "failed" {
+		logger.Error("job has failed ", zap.String("job_name", jobName))
+	}
+
+	if jobWebhook.Status != "success" {
+		return
+	}
+
+	logger.Info("job passed successfully", zap.String("job_name", jobName), zap.Int64("job_id", jobWebhook.Id))
 }
 
 func processWebhook(gitlabClient *gitlab.Client, w http.ResponseWriter, r *http.Request) {
