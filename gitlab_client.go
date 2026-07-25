@@ -59,6 +59,10 @@ func canRetry(jobKey string) (bool, error) {
 
 	var exists bool
 
+	if db == nil {
+		logger.Info("its nil... fix it")
+	}
+
 	err := db.QueryRow(query, jobKey).Scan(&exists)
 	if err != nil {
 		return false, err

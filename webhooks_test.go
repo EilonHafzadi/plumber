@@ -10,6 +10,7 @@ import (
 	"testing"
 	"testing/iotest"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
 	gitlab "gitlab.com/gitlab-org/api/client-go/v2"
 	gitlabtesting "gitlab.com/gitlab-org/api/client-go/v2/testing"
@@ -65,6 +66,15 @@ func assertNextMessage(t *testing.T, expected string, recorder *httptest.Respons
 func TestBotMention_ExactMatch_Triggers(t *testing.T) {
 	setupLogger(t)
 	setupSettings(t)
+
+	// todo learn how to work with sqlMock
+	database, _, err := sqlmock.New()
+
+	if err != nil {
+		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+	}
+
+	db = database
 
 	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
 
