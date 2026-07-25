@@ -1,11 +1,13 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 
+	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 )
 
@@ -17,6 +19,22 @@ ______ _                 _
 | |   | | |_| | | | | | | |_) |  __/ |   
 \_|   |_|\__,_|_| |_| |_|_.__/ \___|_|   
 `
+
+var db *sql.DB
+
+func initDatabase() (*sql.DB, error) {
+	db, err := sql.Open("sqlite3", "./plumber.db")
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS running_jobs (key VARCHAR(50) PRIMARY KEY, retry_count INTEGER, merge_request_id INTEGER)")
+	if err != nil {
+		return nil, err
+	}
+
+	return db, nil
+}
 
 func main() {
 	err := initLogger()
@@ -50,6 +68,13 @@ func main() {
 	if err != nil {
 		logger.Fatal("failed to initialize gitlab client", zap.Error(err))
 	}
+
+	db, err = initDatabase()
+	if err != nil {
+		logger.Fatal("failed to initialize database", zap.Error(err))
+	}
+
+	defer db.Close()
 
 	http.HandleFunc("/webhook", func(w http.ResponseWriter, r *http.Request) {
 		processWebhook(gitlabClient, w, r)
