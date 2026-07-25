@@ -54,16 +54,15 @@ func onMRComment(gitlabClient *gitlab.Client, r http.ResponseWriter, commentWebh
 		return
 	}
 
-	// first check if exists, if so block
 	jobKey := fmt.Sprintf("%d_%d_%s", commentWebhook.ProjectId, commentWebhook.MergeRequest.HeadPipelineId, settings.JobName)
 
-	retry, err := canRetry(jobKey)
+	canRetry, err := canRetry(jobKey)
 	if err != nil {
 		logger.Error("failed to check if job can be retried: ", zap.Error(err))
 		return
 	}
 
-	if !retry {
+	if !canRetry {
 		logger.Warn("job is already running")
 		// job already running
 		return
@@ -76,7 +75,12 @@ func onMRComment(gitlabClient *gitlab.Client, r http.ResponseWriter, commentWebh
 		return
 	}
 
-	logger.Info("request to retry job has been accepted", zap.String("job_name", settings.JobName))
+	logger.Info("retrying job of merge request",
+		zap.Int("merge_request", commentWebhook.MergeRequest.Iid),
+		zap.String("job_name", settings.JobName),
+		zap.Int("retry_count", 1),
+	)
+
 	r.WriteHeader(http.StatusOK)
 }
 
@@ -104,10 +108,6 @@ func handleCommentWebhook(gitlabClient *gitlab.Client, w http.ResponseWriter, bo
 }
 
 func onJobInProgress(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, jobKey string, retryCount int) {
-	// if success and the job did not reach its max retries
-	// retry again
-	// increment the retry count
-
 	jobName := jobWebhook.Name
 
 	_, err := retryJob(gitlabClient, jobWebhook.ProjectId, jobWebhook.Id)
@@ -116,8 +116,24 @@ func onJobInProgress(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, jobKey
 		return
 	}
 
-	db.Exec("UPDATE running_jobs SET retry_count = retry_count + 1 WHERE key = ?", jobKey)
-	logger.Info("Job has been retried again", zap.String("job_name", jobName), zap.Int("retry_count", retryCount+1))
+	mergeRequestIid, err := getMergeRequestIid(jobKey)
+	if err != nil {
+		logger.Error("failed to get merge request id", zap.Error(err))
+		return
+	}
+
+	_, err = db.Exec("UPDATE running_jobs SET retry_count = retry_count + 1 WHERE key = ?", jobKey)
+	if err != nil {
+		logger.Error("failed to update retry_count of job in merge request", zap.Int64("merge_request", mergeRequestIid), zap.String("job_name", jobName), zap.Error(err))
+		return
+	}
+
+	logger.Info("retrying job of merge request",
+		zap.Int64("merge_request", mergeRequestIid),
+		zap.String("job_name", settings.JobName),
+		zap.Int("retry_count", retryCount+1),
+	)
+
 }
 
 func onJobFinished(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, mergeRequestIid int64) {
@@ -131,7 +147,6 @@ func onJobFinished(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, mergeReq
 		return
 	}
 
-	// approve the merge request
 	approved, err := approveMergeRequest(gitlabClient, jobWebhook, mergeRequestIid)
 	if err != nil {
 		logger.Error("failed to approve merge request", zap.String("job_name", jobName), zap.Error(err))
@@ -139,15 +154,14 @@ func onJobFinished(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, mergeReq
 	}
 
 	if approved {
-		logger.Info("quality gate passed, merge request approved", zap.Int64("merge_request_id", mergeRequestIid))
+		logger.Info("quality gate passed, merge request approved", zap.Int64("merge_request", mergeRequestIid))
 	} else {
-		logger.Info("quality gate passed, merge request is already approved", zap.Int64("merge_request_id", mergeRequestIid))
+		logger.Info("quality gate passed, merge request is already approved", zap.Int64("merge_request", mergeRequestIid))
 	}
 
 }
 
 func onJobFailure(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, mergeRequestIid int64, retryCount int) {
-	// unapprove merge request
 	unapproved, err := unapproveMergeRequest(gitlabClient, jobWebhook, mergeRequestIid)
 	jobName := jobWebhook.Name
 
