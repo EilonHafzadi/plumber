@@ -22,8 +22,8 @@ ______ _                 _
 
 var db *sql.DB
 
-func initDatabase() (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", "./plumber.db")
+func initDatabase(dataSrcName string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite3", dataSrcName)
 	if err != nil {
 		return nil, err
 	}
@@ -69,12 +69,17 @@ func main() {
 		logger.Fatal("failed to initialize gitlab client", zap.Error(err))
 	}
 
-	db, err = initDatabase()
+	db, err = initDatabase("./plumber.db")
 	if err != nil {
 		logger.Fatal("failed to initialize database", zap.Error(err))
 	}
 
-	defer db.Close()
+	defer func(db *sql.DB) {
+		err := db.Close()
+		if err != nil {
+			logger.Fatal("failed to close database", zap.Error(err))
+		}
+	}(db)
 
 	http.HandleFunc("/webhook", func(w http.ResponseWriter, r *http.Request) {
 		processWebhook(gitlabClient, w, r)

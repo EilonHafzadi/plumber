@@ -63,7 +63,7 @@ func onMRComment(gitlabClient *gitlab.Client, r http.ResponseWriter, commentWebh
 	}
 
 	if !canRetry {
-		logger.Warn("job is already running")
+		logger.Warn("job is already running", zap.String("job_name", settings.JobName))
 		// job already running
 		return
 	}

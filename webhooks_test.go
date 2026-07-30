@@ -10,12 +10,23 @@ import (
 	"testing"
 	"testing/iotest"
 
-	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
 	gitlab "gitlab.com/gitlab-org/api/client-go/v2"
 	gitlabtesting "gitlab.com/gitlab-org/api/client-go/v2/testing"
 	"go.uber.org/mock/gomock"
 )
+
+func beforeEach(t *testing.T) {
+	setupLogger(t)
+	setupSettings(t)
+
+	database, err := initDatabase(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db = database
+}
 
 func setupSettings(t *testing.T) {
 	err := initSettings(".")
@@ -64,17 +75,7 @@ func assertNextMessage(t *testing.T, expected string, recorder *httptest.Respons
 }
 
 func TestBotMention_ExactMatch_Triggers(t *testing.T) {
-	setupLogger(t)
-	setupSettings(t)
-
-	// todo learn how to work with sqlMock
-	database, _, err := sqlmock.New()
-
-	if err != nil {
-		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
-	}
-
-	db = database
+	beforeEach(t)
 
 	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
 
@@ -97,8 +98,7 @@ func TestBotMention_ExactMatch_Triggers(t *testing.T) {
 }
 
 func TestProcessWebhook_InvalidObjectKind_DoesNotRetry(t *testing.T) {
-	setupLogger(t)
-	setupSettings(t)
+	beforeEach(t)
 
 	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
 
@@ -114,8 +114,7 @@ func TestProcessWebhook_InvalidObjectKind_DoesNotRetry(t *testing.T) {
 }
 
 func TestProcessWebhook_InvalidPayload_DoesNotRetry(t *testing.T) {
-	setupLogger(t)
-	setupSettings(t)
+	beforeEach(t)
 
 	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
 
@@ -130,8 +129,7 @@ func TestProcessWebhook_InvalidPayload_DoesNotRetry(t *testing.T) {
 }
 
 func TestProcessWebhook_InvalidJson_DoesNotRetry(t *testing.T) {
-	setupLogger(t)
-	setupSettings(t)
+	beforeEach(t)
 
 	payload := `{
 		"object_kind": "` + "note" + `",
@@ -157,8 +155,7 @@ func TestProcessWebhook_InvalidJson_DoesNotRetry(t *testing.T) {
 }
 
 func TestProcessWebhook_InvalidCommentWebhook_DoesNotRetry(t *testing.T) {
-	setupLogger(t)
-	setupSettings(t)
+	beforeEach(t)
 
 	payload := `{
 		"object_kind": "note",
@@ -178,8 +175,7 @@ func TestProcessWebhook_InvalidCommentWebhook_DoesNotRetry(t *testing.T) {
 }
 
 func TestProcessWebhook_CommentNotMRComment_DoesNotRetry(t *testing.T) {
-	setupLogger(t)
-	setupSettings(t)
+	beforeEach(t)
 
 	payload := `{
 		"object_kind": "note",
@@ -201,8 +197,7 @@ func TestProcessWebhook_CommentNotMRComment_DoesNotRetry(t *testing.T) {
 }
 
 func TestProcessWebhook_ListPipelineJobs_Fails_DoesNotRetry(t *testing.T) {
-	setupLogger(t)
-	setupSettings(t)
+	beforeEach(t)
 
 	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
 
@@ -226,8 +221,7 @@ func TestProcessWebhook_ListPipelineJobs_Fails_DoesNotRetry(t *testing.T) {
 }
 
 func TestProcessWebhook_GetJobId_ReturnsEmpty_DoesNotRetry(t *testing.T) {
-	setupLogger(t)
-	setupSettings(t)
+	beforeEach(t)
 
 	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
 
@@ -247,8 +241,7 @@ func TestProcessWebhook_GetJobId_ReturnsEmpty_DoesNotRetry(t *testing.T) {
 }
 
 func TestProcessWebhook_GetJobId_FailsJobNotFound_DoesNotRetry(t *testing.T) {
-	setupLogger(t)
-	setupSettings(t)
+	beforeEach(t)
 
 	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
 
@@ -268,8 +261,7 @@ func TestProcessWebhook_GetJobId_FailsJobNotFound_DoesNotRetry(t *testing.T) {
 }
 
 func TestProcessWebhook_RetryJob_Fails_DoesNotRetry(t *testing.T) {
-	setupLogger(t)
-	setupSettings(t)
+	beforeEach(t)
 
 	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
 
