@@ -1,5 +1,24 @@
 package main
 
+import "database/sql"
+
+var db *sql.DB
+
+// todo check how headscale do SQL db init
+func initDatabase(dataSrcName string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite3", dataSrcName)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS running_jobs (key VARCHAR(50) PRIMARY KEY, retry_count INTEGER, merge_request_id INTEGER)")
+	if err != nil {
+		return nil, err
+	}
+
+	return db, nil
+}
+
 func canRetry(jobKey string) (bool, error) {
 	query := `SELECT EXISTS(SELECT 1 FROM running_jobs WHERE key = ?)`
 

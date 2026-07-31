@@ -20,22 +20,6 @@ ______ _                 _
 \_|   |_|\__,_|_| |_| |_|_.__/ \___|_|   
 `
 
-var db *sql.DB
-
-func initDatabase(dataSrcName string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", dataSrcName)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = db.Exec("CREATE TABLE IF NOT EXISTS running_jobs (key VARCHAR(50) PRIMARY KEY, retry_count INTEGER, merge_request_id INTEGER)")
-	if err != nil {
-		return nil, err
-	}
-
-	return db, nil
-}
-
 func main() {
 	err := initLogger()
 

@@ -58,7 +58,7 @@ func approveMergeRequest(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, me
 	approvals, _, err := gitlabClient.MergeRequestApprovals.GetConfiguration(jobWebhook.ProjectId, mergeRequestIid)
 
 	if err != nil {
-		logger.Error("failed to get configuration of merge request", zap.Int64("merge_request_id", mergeRequestIid), zap.Error(err))
+		logger.Error("could not get configuration of merge request", zap.Int64("merge_request_id", mergeRequestIid), zap.Error(err))
 		return false, err
 	}
 

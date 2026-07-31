@@ -40,17 +40,17 @@ type JobWebhook struct {
 	Name       string `json:"build_name"`
 }
 
-func onMRComment(gitlabClient *gitlab.Client, r http.ResponseWriter, commentWebhook *CommentWebhook) {
+func onMRComment(gitlabClient *gitlab.Client, w http.ResponseWriter, commentWebhook *CommentWebhook) {
 	jobId, err := getJobId(gitlabClient, commentWebhook)
 	if err != nil {
-		http.Error(r, "failed to retrieve job id: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "failed to retrieve job id: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	_, err = retryJob(gitlabClient, commentWebhook.ProjectId, jobId)
 
 	if err != nil {
-		http.Error(r, "failed to retry job: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "failed to retry job: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -71,7 +71,7 @@ func onMRComment(gitlabClient *gitlab.Client, r http.ResponseWriter, commentWebh
 	// otherwise insert it into db
 	_, err = db.Exec("INSERT INTO running_jobs (key, retry_count, merge_request_id) VALUES (?, 1, ?)", jobKey, commentWebhook.MergeRequest.Iid)
 	if err != nil {
-		logger.Error("failed to insert job to running jobs", zap.Error(err))
+		logger.Error("failed to insert job to running jobs", zap.String("job_name", settings.JobName), zap.Error(err))
 		return
 	}
 
@@ -81,7 +81,7 @@ func onMRComment(gitlabClient *gitlab.Client, r http.ResponseWriter, commentWebh
 		zap.Int("retry_count", 1),
 	)
 
-	r.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusCreated)
 }
 
 func handleCommentWebhook(gitlabClient *gitlab.Client, w http.ResponseWriter, body []byte) {
@@ -149,7 +149,7 @@ func onJobFinished(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, mergeReq
 
 	approved, err := approveMergeRequest(gitlabClient, jobWebhook, mergeRequestIid)
 	if err != nil {
-		logger.Error("failed to approve merge request", zap.String("job_name", jobName), zap.Error(err))
+		logger.Error("failed to approve merge request", zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
 		return
 	}
 
