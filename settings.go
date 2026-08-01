@@ -12,7 +12,7 @@ type Settings struct {
 	ServerIP       string
 	ServerPort     int
 	JobName        string
-	BotName        string
+	RetryCommand   string
 	RetryAmount    int
 }
 
@@ -34,7 +34,7 @@ func initSettings(settingsPath string) error {
 		ServerIP:       viper.GetString("server_ip"),
 		ServerPort:     viper.GetInt("server_port"),
 		JobName:        viper.GetString("job_name"),
-		BotName:        viper.GetString("bot_name"),
+		RetryCommand:   viper.GetString("retry_command"),
 		RetryAmount:    viper.GetInt("retry_amount"),
 	}
 

@@ -19,19 +19,6 @@ func initDatabase(dataSrcName string) (*sql.DB, error) {
 	return db, nil
 }
 
-func canRetry(jobKey string) (bool, error) {
-	query := `SELECT EXISTS(SELECT 1 FROM running_jobs WHERE key = ?)`
-
-	var exists bool
-
-	err := db.QueryRow(query, jobKey).Scan(&exists)
-	if err != nil {
-		return false, err
-	}
-
-	return !exists, nil
-}
-
 func isPlumberJob(jobKey string) bool {
 	query := `SELECT EXISTS(SELECT 1 FROM running_jobs WHERE key = ?)`
 

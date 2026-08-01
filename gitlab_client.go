@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go/v2"
-	"go.uber.org/zap"
 )
 
 func initGitlabClient() (*gitlab.Client, error) {
@@ -58,8 +57,7 @@ func approveMergeRequest(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, me
 	approvals, _, err := gitlabClient.MergeRequestApprovals.GetConfiguration(jobWebhook.ProjectId, mergeRequestIid)
 
 	if err != nil {
-		logger.Error("could not get configuration of merge request", zap.Int64("merge_request_id", mergeRequestIid), zap.Error(err))
-		return false, err
+		return false, fmt.Errorf("could not get configuration of merge request %d: %w", mergeRequestIid, err)
 	}
 
 	if approvals.UserHasApproved {
@@ -69,7 +67,7 @@ func approveMergeRequest(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, me
 	_, _, err = gitlabClient.MergeRequestApprovals.ApproveMergeRequest(jobWebhook.ProjectId, mergeRequestIid, nil)
 
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("could not approve merge request: %d: %w", mergeRequestIid, err)
 	}
 
 	return true, nil
@@ -79,8 +77,7 @@ func unapproveMergeRequest(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, 
 	approvals, _, err := gitlabClient.MergeRequestApprovals.GetConfiguration(jobWebhook.ProjectId, mergeRequestIid)
 
 	if err != nil {
-		logger.Error("failed to get configuration of merge request", zap.Int64("merge_request_id", mergeRequestIid), zap.Error(err))
-		return false, err
+		return false, fmt.Errorf("could not get configuration of merge request %d: %w", mergeRequestIid, err)
 	}
 
 	if !approvals.UserHasApproved {
@@ -90,7 +87,7 @@ func unapproveMergeRequest(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, 
 	_, err = gitlabClient.MergeRequestApprovals.UnapproveMergeRequest(jobWebhook.ProjectId, mergeRequestIid)
 
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("could not unapprove merge request: %d: %w", mergeRequestIid, err)
 	}
 
 	return true, nil

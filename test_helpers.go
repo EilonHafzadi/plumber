@@ -109,3 +109,17 @@ func updateMergeRequestIid(t *testing.T, key string, value string) {
 		t.Fatal(err)
 	}
 }
+
+func insertRunningJob(t *testing.T, key string, retryCount int, mergeRequestId int64) {
+	t.Helper()
+
+	_, err := db.Exec(
+		"INSERT INTO running_jobs (key, retry_count, merge_request_id) VALUES (?, ?, ?)",
+		key, retryCount, mergeRequestId,
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+}

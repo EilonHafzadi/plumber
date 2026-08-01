@@ -56,13 +56,7 @@ func onMRComment(gitlabClient *gitlab.Client, w http.ResponseWriter, commentWebh
 
 	jobKey := fmt.Sprintf("%d_%d_%s", commentWebhook.ProjectId, commentWebhook.MergeRequest.HeadPipelineId, settings.JobName)
 
-	canRetry, err := canRetry(jobKey)
-	if err != nil {
-		logger.Error("failed to check if job can be retried: ", zap.Error(err))
-		return
-	}
-
-	if !canRetry {
+	if isPlumberJob(jobKey) {
 		logger.Warn("job is already running", zap.String("job_name", settings.JobName))
 		// job already running
 		return
@@ -101,7 +95,7 @@ func handleCommentWebhook(gitlabClient *gitlab.Client, w http.ResponseWriter, bo
 	note := commentWebhook.ObjectAttributes.Note
 
 	// if the comment is a bot mention, only then we retry
-	if strings.Contains(note, "@"+settings.BotName) {
+	if strings.Contains(note, "@"+settings.RetryCommand) {
 		onMRComment(gitlabClient, w, &commentWebhook)
 	}
 
@@ -171,10 +165,11 @@ func onJobFailure(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, mergeRequ
 	}
 
 	if unapproved {
-		logger.Error("quality gate failed, job has failed", zap.String("job_name", jobName), zap.Int("retry_count", retryCount))
+		logger.Error("quality gate failed, merge request unapproved", zap.String("job_name", jobName), zap.Int("retry_count", retryCount))
 	} else {
 		logger.Error("quality gate failed, job is already unapproved", zap.String("job_name", jobName), zap.Int("retry_count", retryCount))
 	}
+
 }
 
 func handleJobWebhook(gitlabClient *gitlab.Client, w http.ResponseWriter, body []byte) {
