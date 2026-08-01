@@ -528,7 +528,7 @@ func TestProcessWebhook_Build_Failed_UnapproveMergeRequestFails_NoStateChange(t 
 	assert.Equal(t, 1, retryCount)
 }
 
-func TestProcessWebhook_onMRComment_isPlumberJob_ReturnsFalse(t *testing.T) {
+func TestProcessWebhook_OnRetryCommand_isPlumberJob_ReturnsFalse(t *testing.T) {
 	beforeEach(t)
 	jobKey := buildJobKey(83, 10)
 	insertRunningJob(t, jobKey, 1, 7)
@@ -551,7 +551,7 @@ func TestProcessWebhook_onMRComment_isPlumberJob_ReturnsFalse(t *testing.T) {
 	assert.False(t, isPlumberJob(jobKey))
 }
 
-func TestProcessWebhook_onMRComment_InsertFails(t *testing.T) {
+func TestProcessWebhook_OnRetryCommand_InsertFails(t *testing.T) {
 	beforeEach(t)
 	forceReadOnly(t)
 

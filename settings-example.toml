@@ -2,7 +2,7 @@ server_ip = "0.0.0.0"
 server_port = 8080
 
 job_name = "job_test"
-retry_command = "@mreasternman"
+retry_command = "@plumber"
 retry_amount = 3
 
 gitlab_instance = "https://gitlab.com"

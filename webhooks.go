@@ -40,7 +40,7 @@ type JobWebhook struct {
 	Name       string `json:"build_name"`
 }
 
-func onMRComment(gitlabClient *gitlab.Client, w http.ResponseWriter, commentWebhook *CommentWebhook) {
+func onRetryCommand(gitlabClient *gitlab.Client, w http.ResponseWriter, commentWebhook *CommentWebhook) {
 	jobId, err := getJobId(gitlabClient, commentWebhook)
 	if err != nil {
 		http.Error(w, "failed to retrieve job id: "+err.Error(), http.StatusInternalServerError)
@@ -95,8 +95,8 @@ func handleCommentWebhook(gitlabClient *gitlab.Client, w http.ResponseWriter, bo
 	note := commentWebhook.ObjectAttributes.Note
 
 	// if the comment is a bot mention, only then we retry
-	if strings.Contains(note, "@"+settings.RetryCommand) {
-		onMRComment(gitlabClient, w, &commentWebhook)
+	if strings.Contains(note, settings.RetryCommand) {
+		onRetryCommand(gitlabClient, w, &commentWebhook)
 	}
 
 }
