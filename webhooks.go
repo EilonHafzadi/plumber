@@ -47,18 +47,18 @@ func onRetryCommand(gitlabClient *gitlab.Client, w http.ResponseWriter, commentW
 		return
 	}
 
+	jobKey := fmt.Sprintf("%d_%d_%s", commentWebhook.ProjectId, commentWebhook.MergeRequest.HeadPipelineId, settings.JobName)
+
+	if isRunningJob(jobKey) {
+		logger.Warn("job is already running", zap.String("job_name", settings.JobName))
+		// job already running
+		return
+	}
+
 	_, err = retryJob(gitlabClient, commentWebhook.ProjectId, jobId)
 
 	if err != nil {
 		http.Error(w, "failed to retry job: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	jobKey := fmt.Sprintf("%d_%d_%s", commentWebhook.ProjectId, commentWebhook.MergeRequest.HeadPipelineId, settings.JobName)
-
-	if isPlumberJob(jobKey) {
-		logger.Warn("job is already running", zap.String("job_name", settings.JobName))
-		// job already running
 		return
 	}
 
@@ -156,6 +156,14 @@ func onJobFinished(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, mergeReq
 }
 
 func onJobFailure(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, mergeRequestIid int64, retryCount int) {
+	jobKey := fmt.Sprintf("%d_%d_%s", jobWebhook.ProjectId, jobWebhook.PipelineId, settings.JobName)
+	err := deleteJob(jobKey)
+
+	if err != nil {
+		logger.Error("failed to delete job from running jobs", zap.String("job_name", jobWebhook.Name), zap.Error(err))
+		return
+	}
+
 	unapproved, err := unapproveMergeRequest(gitlabClient, jobWebhook, mergeRequestIid)
 	jobName := jobWebhook.Name
 
@@ -185,7 +193,7 @@ func handleJobWebhook(gitlabClient *gitlab.Client, w http.ResponseWriter, body [
 	jobKey := fmt.Sprintf("%d_%d_%s", jobWebhook.ProjectId, jobWebhook.PipelineId, jobName)
 
 	// if the job was not triggered by plumber, we don't care about it
-	if !isPlumberJob(jobKey) {
+	if !isRunningJob(jobKey) {
 		return
 	}
 

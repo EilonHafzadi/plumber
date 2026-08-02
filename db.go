@@ -19,7 +19,7 @@ func initDatabase(dataSrcName string) (*sql.DB, error) {
 	return db, nil
 }
 
-func isPlumberJob(jobKey string) bool {
+func isRunningJob(jobKey string) bool {
 	query := `SELECT EXISTS(SELECT 1 FROM running_jobs WHERE key = ?)`
 
 	var exists bool

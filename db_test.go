@@ -6,20 +6,20 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestIsPlumberJob_ReturnsTrue(t *testing.T) {
+func TestIsRunningJob_ReturnsTrue(t *testing.T) {
 	beforeEach(t)
 	insertRunningJob(t, "job_key", 1, 42)
 
-	assert.True(t, isPlumberJob("job_key"))
+	assert.True(t, isRunningJob("job_key"))
 }
 
-func TestIsPlumberJob_ReturnsFalse(t *testing.T) {
+func TestIsRunningJob_ReturnsFalse(t *testing.T) {
 	beforeEach(t)
 
-	assert.False(t, isPlumberJob("missing_key"))
+	assert.False(t, isRunningJob("missing_key"))
 }
 
-func TestIsPlumberJob_ReturnsError(t *testing.T) {
+func TestIsRunningJob_ReturnsError(t *testing.T) {
 	beforeEach(t)
 	insertRunningJob(t, "job_key", 1, 42)
 
@@ -28,28 +28,28 @@ func TestIsPlumberJob_ReturnsError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assert.False(t, isPlumberJob("job_key"))
+	assert.False(t, isRunningJob("job_key"))
 }
 
 func TestDeleteJob_Success(t *testing.T) {
 	beforeEach(t)
 	insertRunningJob(t, "job_key", 1, 42)
 
-	assert.True(t, isPlumberJob("job_key"))
+	assert.True(t, isRunningJob("job_key"))
 	err := deleteJob("job_key")
 
 	assert.NoError(t, err)
-	assert.False(t, isPlumberJob("job_key"))
+	assert.False(t, isRunningJob("job_key"))
 }
 
 func TestDeleteJob_JobDoesNotExist(t *testing.T) {
 	beforeEach(t)
 
-	assert.False(t, isPlumberJob("missing_key"))
+	assert.False(t, isRunningJob("missing_key"))
 	err := deleteJob("missing_key")
 
 	assert.NoError(t, err)
-	assert.False(t, isPlumberJob("missing_key"))
+	assert.False(t, isRunningJob("missing_key"))
 }
 
 func TestDeleteJob_ReturnsError(t *testing.T) {

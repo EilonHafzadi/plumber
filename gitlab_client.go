@@ -30,24 +30,38 @@ func retryJob(gitlabClient *gitlab.Client, projectId int, jobId int64) (*gitlab.
 }
 
 func getJobId(gitlabClient *gitlab.Client, webhook *CommentWebhook) (int64, error) {
-	jobs, _, err := gitlabClient.Jobs.ListPipelineJobs(
-		webhook.ProjectId,
-		int64(webhook.MergeRequest.HeadPipelineId),
-		nil,
-	)
-
-	if err != nil {
-		return -1, err
+	opts := &gitlab.ListJobsOptions{
+		ListOptions: gitlab.ListOptions{
+			PerPage: 100,
+		},
 	}
 
-	if len(jobs) == 0 {
-		return -1, fmt.Errorf("no jobs found for pipeline %d", webhook.MergeRequest.HeadPipelineId)
-	}
+	for {
+		jobs, resp, err := gitlabClient.Jobs.ListPipelineJobs(
+			webhook.ProjectId,
+			int64(webhook.MergeRequest.HeadPipelineId),
+			opts,
+		)
 
-	for _, job := range jobs {
-		if job.Name == settings.JobName {
-			return job.ID, nil
+		if err != nil {
+			return -1, err
 		}
+
+		if len(jobs) == 0 {
+			return -1, fmt.Errorf("no jobs found for pipeline %d", webhook.MergeRequest.HeadPipelineId)
+		}
+
+		for _, job := range jobs {
+			if job.Name == settings.JobName {
+				return job.ID, nil
+			}
+		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+
+		opts.Page = resp.NextPage
 	}
 
 	return -1, fmt.Errorf("no job with name %s", settings.JobName)

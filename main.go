@@ -61,7 +61,7 @@ func main() {
 	defer func(db *sql.DB) {
 		err := db.Close()
 		if err != nil {
-			logger.Fatal("failed to close database", zap.Error(err))
+			logger.Error("failed to close database", zap.Error(err))
 		}
 	}(db)
 
