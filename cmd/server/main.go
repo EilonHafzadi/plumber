@@ -6,6 +6,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"plumber/internal/config"
+	"plumber/internal/db"
+	"plumber/internal/gitlab"
+	"plumber/internal/logging"
 
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
@@ -21,7 +25,7 @@ ______ _                 _
 `
 
 func main() {
-	err := initLogger()
+	logger, err := logging.NewLogger()
 
 	if err != nil {
 		log.Fatal(err)
@@ -36,24 +40,24 @@ func main() {
 		}
 	}(logger)
 
-	settingsPath := os.Getenv("SETTINGS_PATH")
-	if settingsPath == "" {
-		logger.Fatal("SETTINGS_PATH environment variable is not set")
+	configPath := os.Getenv("CONFIG_PATH")
+	if configPath == "" {
+		logger.Fatal("CONFIG_PATH environment variable is not set")
 	}
 
-	err = initSettings(settingsPath)
+	cfg, err := config.NewConfig(configPath)
 
 	if err != nil {
 		logger.Fatal("failed to initialize settings", zap.Error(err))
 	}
 
-	gitlabClient, err := initGitlabClient()
+	gitlabClient, err := gitlab.NewGitlabClient(cfg)
 
 	if err != nil {
 		logger.Fatal("failed to initialize gitlab client", zap.Error(err))
 	}
 
-	db, err = initDatabase("./plumber.db")
+	database, err := db.NewDatabase("./plumber.db")
 	if err != nil {
 		logger.Fatal("failed to initialize database", zap.Error(err))
 	}
@@ -63,13 +67,18 @@ func main() {
 		if err != nil {
 			logger.Error("failed to close database", zap.Error(err))
 		}
-	}(db)
+	}(database)
 
 	http.HandleFunc("/webhook", func(w http.ResponseWriter, r *http.Request) {
-		processWebhook(gitlabClient, w, r)
+		gitlab.ProcessWebhook(w, r, &gitlab.WebhookHandler{
+			Client:   gitlabClient,
+			Cfg:      cfg,
+			Logger:   logger,
+			Database: database,
+		})
 	})
 
-	serverAddress := fmt.Sprintf("%s:%d", settings.ServerIP, settings.ServerPort)
+	serverAddress := fmt.Sprintf("%s:%d", cfg.ServerIP, cfg.ServerPort)
 	logger.Info("server started on", zap.String("address", serverAddress))
 
 	err = http.ListenAndServe(serverAddress, nil)

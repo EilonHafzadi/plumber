@@ -1,4 +1,4 @@
-package main
+package logging
 
 import (
 	"fmt"
@@ -8,9 +8,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-var logger *zap.Logger
-
-func initLogger() error {
+func NewLogger() (*zap.Logger, error) {
 	config := zap.Config{
 		Level:       zap.NewAtomicLevelAt(zap.InfoLevel),
 		Development: true,
@@ -41,9 +39,8 @@ func initLogger() error {
 	l, err := config.Build(zap.AddCaller())
 
 	if err != nil {
-		return fmt.Errorf("failed to setup logger: %w", err)
+		return nil, fmt.Errorf("failed to setup logger: %w", err)
 	}
 
-	logger = l
-	return nil
+	return l, nil
 }

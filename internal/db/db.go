@@ -1,15 +1,15 @@
-package main
+package db
 
 import "database/sql"
 
-var db *sql.DB
-
 // todo check how headscale do SQL db init
-func initDatabase(dataSrcName string) (*sql.DB, error) {
+func NewDatabase(dataSrcName string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", dataSrcName)
 	if err != nil {
 		return nil, err
 	}
+
+	db.SetMaxOpenConns(1)
 
 	_, err = db.Exec("CREATE TABLE IF NOT EXISTS running_jobs (key VARCHAR(50) PRIMARY KEY, retry_count INTEGER, merge_request_id INTEGER)")
 	if err != nil {
@@ -19,7 +19,7 @@ func initDatabase(dataSrcName string) (*sql.DB, error) {
 	return db, nil
 }
 
-func isRunningJob(jobKey string) bool {
+func IsRunningJob(db *sql.DB, jobKey string) bool {
 	query := `SELECT EXISTS(SELECT 1 FROM running_jobs WHERE key = ?)`
 
 	var exists bool
@@ -32,7 +32,7 @@ func isRunningJob(jobKey string) bool {
 	return exists
 }
 
-func deleteJob(jobKey string) error {
+func DeleteJob(db *sql.DB, jobKey string) error {
 	_, err := db.Exec("DELETE FROM running_jobs WHERE key = ?", jobKey)
 
 	if err != nil {
@@ -42,7 +42,7 @@ func deleteJob(jobKey string) error {
 	return nil
 }
 
-func getRetryCount(jobKey string) (int, error) {
+func GetRetryCount(db *sql.DB, jobKey string) (int, error) {
 	var retryCount int
 	err := db.QueryRow("SELECT retry_count FROM running_jobs WHERE key = ?", jobKey).Scan(&retryCount)
 
@@ -53,7 +53,7 @@ func getRetryCount(jobKey string) (int, error) {
 	return retryCount, nil
 }
 
-func getMergeRequestIid(jobKey string) (int64, error) {
+func GetMergeRequestIid(db *sql.DB, jobKey string) (int64, error) {
 	var mergeRequestId int64
 	err := db.QueryRow("SELECT merge_request_id FROM running_jobs WHERE key = ?", jobKey).Scan(&mergeRequestId)
 

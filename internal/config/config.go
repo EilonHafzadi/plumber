@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-type Settings struct {
+type Config struct {
 	GitlabInstance string
 	AccessToken    string
 	ServerIP       string
@@ -16,19 +16,17 @@ type Settings struct {
 	RetryAmount    int
 }
 
-var settings *Settings
-
-func initSettings(settingsPath string) error {
-	viper.SetConfigName("settings")
+func NewConfig(configPath string) (*Config, error) {
+	viper.SetConfigName("config")
 	viper.SetConfigType("toml")
-	viper.AddConfigPath(settingsPath)
+	viper.AddConfigPath(configPath)
 
 	err := viper.ReadInConfig()
 	if err != nil {
-		return fmt.Errorf("failed to read settings: %w", err)
+		return nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
-	settings = &Settings{
+	return &Config{
 		GitlabInstance: viper.GetString("gitlab_instance"),
 		AccessToken:    viper.GetString("access_token"),
 		ServerIP:       viper.GetString("server_ip"),
@@ -36,7 +34,5 @@ func initSettings(settingsPath string) error {
 		JobName:        viper.GetString("job_name"),
 		RetryCommand:   viper.GetString("retry_command"),
 		RetryAmount:    viper.GetInt("retry_amount"),
-	}
-
-	return nil
+	}, nil
 }

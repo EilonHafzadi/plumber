@@ -1,12 +1,13 @@
-package main
+package gitlab
 
 import (
 	"fmt"
+	"plumber/internal/config"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go/v2"
 )
 
-func initGitlabClient() (*gitlab.Client, error) {
+func NewGitlabClient(settings *config.Config) (*gitlab.Client, error) {
 	client, err := gitlab.NewClient(
 		settings.AccessToken,
 		gitlab.WithBaseURL(settings.GitlabInstance),
@@ -19,7 +20,7 @@ func initGitlabClient() (*gitlab.Client, error) {
 	return client, nil
 }
 
-func retryJob(gitlabClient *gitlab.Client, projectId int, jobId int64) (*gitlab.Job, error) {
+func RetryJob(gitlabClient *gitlab.Client, projectId int, jobId int64) (*gitlab.Job, error) {
 	job, _, err := gitlabClient.Jobs.RetryJob(projectId, jobId)
 
 	if err != nil {
@@ -29,7 +30,7 @@ func retryJob(gitlabClient *gitlab.Client, projectId int, jobId int64) (*gitlab.
 	return job, nil
 }
 
-func getJobId(gitlabClient *gitlab.Client, webhook *CommentWebhook) (int64, error) {
+func GetJobId(gitlabClient *gitlab.Client, webhook *CommentWebhook, cfg *config.Config) (int64, error) {
 	opts := &gitlab.ListJobsOptions{
 		ListOptions: gitlab.ListOptions{
 			PerPage: 100,
@@ -52,7 +53,7 @@ func getJobId(gitlabClient *gitlab.Client, webhook *CommentWebhook) (int64, erro
 		}
 
 		for _, job := range jobs {
-			if job.Name == settings.JobName {
+			if job.Name == cfg.JobName {
 				return job.ID, nil
 			}
 		}
@@ -64,10 +65,10 @@ func getJobId(gitlabClient *gitlab.Client, webhook *CommentWebhook) (int64, erro
 		opts.Page = resp.NextPage
 	}
 
-	return -1, fmt.Errorf("no job with name %s", settings.JobName)
+	return -1, fmt.Errorf("no job with name %s", cfg.JobName)
 }
 
-func approveMergeRequest(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, mergeRequestIid int64) (bool, error) {
+func ApproveMergeRequest(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, mergeRequestIid int64) (bool, error) {
 	approvals, _, err := gitlabClient.MergeRequestApprovals.GetConfiguration(jobWebhook.ProjectId, mergeRequestIid)
 
 	if err != nil {
@@ -87,7 +88,7 @@ func approveMergeRequest(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, me
 	return true, nil
 }
 
-func unapproveMergeRequest(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, mergeRequestIid int64) (bool, error) {
+func UnapproveMergeRequest(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, mergeRequestIid int64) (bool, error) {
 	approvals, _, err := gitlabClient.MergeRequestApprovals.GetConfiguration(jobWebhook.ProjectId, mergeRequestIid)
 
 	if err != nil {

@@ -1,10 +1,11 @@
-package main
+package gitlab
 
 import (
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"plumber/internal/db"
 	"strings"
 	"testing"
 	"testing/iotest"
@@ -15,19 +16,6 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// todo improve beforeEach usage
-func beforeEach(t *testing.T) {
-	setupLogger(t)
-	setupSettings(t)
-
-	database, err := initDatabase(":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	db = database
-}
-
 func TestBotMention_ExactMatch_Triggers(t *testing.T) {
 	beforeEach(t)
 
@@ -37,17 +25,17 @@ func TestBotMention_ExactMatch_Triggers(t *testing.T) {
 		},
 	}
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	client.MockJobs.EXPECT().
 		ListPipelineJobs(83, int64(1), opts).
-		Return([]*gitlab.Job{{ID: 1, Name: settings.JobName}}, &gitlab.Response{}, nil)
+		Return([]*gitlab.Job{{ID: 1, Name: cfg.JobName}}, &gitlab.Response{}, nil)
 
 	client.MockJobs.EXPECT().
 		RetryJob(83, int64(1)).
 		Return(&gitlab.Job{ID: 1}, &gitlab.Response{}, nil)
 
-	payload := commentPayload("note", fmt.Sprintf("@%s retry", settings.RetryCommand), 1)
+	payload := commentPayload("note", fmt.Sprintf("@%s retry", cfg.RetryCommand), 1)
 	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(payload))
 
 	rec := sendRequest(client, request)
@@ -60,9 +48,9 @@ func TestBotMention_ExactMatch_Triggers(t *testing.T) {
 func TestProcessWebhook_InvalidObjectKind_DoesNotRetry(t *testing.T) {
 	beforeEach(t)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
-	payload := commentPayload("push", fmt.Sprintf("@%s retry", settings.RetryCommand), 1)
+	payload := commentPayload("push", fmt.Sprintf("@%s retry", cfg.RetryCommand), 1)
 	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(payload))
 	rec := sendRequest(client, request)
 
@@ -76,7 +64,7 @@ func TestProcessWebhook_InvalidObjectKind_DoesNotRetry(t *testing.T) {
 func TestProcessWebhook_InvalidPayload_DoesNotRetry(t *testing.T) {
 	beforeEach(t)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	request := httptest.NewRequest(http.MethodPost, "/webhook", iotest.ErrReader(errors.New("boom")))
 	recorder := sendRequest(client, request)
@@ -104,7 +92,7 @@ func TestProcessWebhook_InvalidJson_DoesNotRetry(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(payload))
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 	recorder := sendRequest(client, request)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -124,7 +112,7 @@ func TestProcessWebhook_InvalidCommentWebhook_DoesNotRetry(t *testing.T) {
 	}`
 
 	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(payload))
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 	recorder := sendRequest(client, request)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -146,7 +134,7 @@ func TestProcessWebhook_CommentNotMRComment_DoesNotRetry(t *testing.T) {
 	}`
 
 	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(payload))
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 	recorder := sendRequest(client, request)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -159,7 +147,7 @@ func TestProcessWebhook_CommentNotMRComment_DoesNotRetry(t *testing.T) {
 func TestProcessWebhook_ListPipelineJobs_Fails_DoesNotRetry(t *testing.T) {
 	beforeEach(t)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	notFoundResp := &gitlab.Response{
 		Response: &http.Response{StatusCode: http.StatusNotFound},
@@ -169,7 +157,7 @@ func TestProcessWebhook_ListPipelineJobs_Fails_DoesNotRetry(t *testing.T) {
 		ListPipelineJobs(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, notFoundResp, errors.New("404 Not Found"))
 
-	payload := commentPayload("note", fmt.Sprintf("@%s retry", settings.RetryCommand), 1)
+	payload := commentPayload("note", fmt.Sprintf("@%s retry", cfg.RetryCommand), 1)
 	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(payload))
 
 	rec := sendRequest(client, request)
@@ -183,7 +171,7 @@ func TestProcessWebhook_ListPipelineJobs_Fails_DoesNotRetry(t *testing.T) {
 func TestProcessWebhook_GetJobId_ReturnsEmpty_DoesNotRetry(t *testing.T) {
 	beforeEach(t)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	opts := &gitlab.ListJobsOptions{
 		ListOptions: gitlab.ListOptions{
@@ -195,7 +183,7 @@ func TestProcessWebhook_GetJobId_ReturnsEmpty_DoesNotRetry(t *testing.T) {
 		ListPipelineJobs(83, int64(1), opts).
 		Return([]*gitlab.Job{}, &gitlab.Response{}, nil)
 
-	payload := commentPayload("note", fmt.Sprintf("@%s retry", settings.RetryCommand), 1)
+	payload := commentPayload("note", fmt.Sprintf("@%s retry", cfg.RetryCommand), 1)
 	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(payload))
 
 	rec := sendRequest(client, request)
@@ -209,7 +197,7 @@ func TestProcessWebhook_GetJobId_ReturnsEmpty_DoesNotRetry(t *testing.T) {
 func TestProcessWebhook_GetJobId_FailsJobNotFound_DoesNotRetry(t *testing.T) {
 	beforeEach(t)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	opts := &gitlab.ListJobsOptions{
 		ListOptions: gitlab.ListOptions{
@@ -221,7 +209,7 @@ func TestProcessWebhook_GetJobId_FailsJobNotFound_DoesNotRetry(t *testing.T) {
 		ListPipelineJobs(83, int64(1), opts).
 		Return([]*gitlab.Job{{ID: 2, Name: "other_job"}}, &gitlab.Response{}, nil)
 
-	payload := commentPayload("note", fmt.Sprintf("@%s retry", settings.RetryCommand), 1)
+	payload := commentPayload("note", fmt.Sprintf("@%s retry", cfg.RetryCommand), 1)
 	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(payload))
 
 	rec := sendRequest(client, request)
@@ -229,13 +217,13 @@ func TestProcessWebhook_GetJobId_FailsJobNotFound_DoesNotRetry(t *testing.T) {
 		t.Errorf("expected %d but got %d", http.StatusInternalServerError, rec.Code)
 	}
 
-	assertNextMessage(t, "failed to retrieve job id: no job with name "+settings.JobName+"\n", rec)
+	assertNextMessage(t, "failed to retrieve job id: no job with name "+cfg.JobName+"\n", rec)
 }
 
 func TestProcessWebhook_RetryJob_Fails_DoesNotRetry(t *testing.T) {
 	beforeEach(t)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	opts := &gitlab.ListJobsOptions{
 		ListOptions: gitlab.ListOptions{
@@ -245,13 +233,13 @@ func TestProcessWebhook_RetryJob_Fails_DoesNotRetry(t *testing.T) {
 
 	client.MockJobs.EXPECT().
 		ListPipelineJobs(83, int64(1), opts).
-		Return([]*gitlab.Job{{ID: 1, Name: settings.JobName}}, &gitlab.Response{}, nil)
+		Return([]*gitlab.Job{{ID: 1, Name: cfg.JobName}}, &gitlab.Response{}, nil)
 
 	client.MockJobs.EXPECT().
 		RetryJob(gomock.Any(), gomock.Any()).
 		Return(nil, &gitlab.Response{}, errors.New("oh no rip"))
 
-	payload := commentPayload("note", fmt.Sprintf("@%s retry", settings.RetryCommand), 1)
+	payload := commentPayload("note", fmt.Sprintf("@%s retry", cfg.RetryCommand), 1)
 	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(payload))
 
 	rec := sendRequest(client, request)
@@ -274,7 +262,7 @@ func TestProcessWebhook_Build_InvalidJson_DoesNotProcess(t *testing.T) {
 		"build_name": "job_test"
 	}`
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := sendRequest(client, request)
 
@@ -286,65 +274,65 @@ func TestProcessWebhook_Build_NotPlumberJob_DoesNothing(t *testing.T) {
 	beforeEach(t)
 
 	// No row seeded in running_jobs, so this build is not one plumber started.
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
-	payload := jobPayload("success", 83, 10, 55)
+	payload := jobPayload("success", 83, 10, 55, cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := sendRequest(client, request)
 
 	assert.Equal(t, 200, rec.Code)
-	assert.Equal(t, 0, countRunningJobs(t, buildJobKey(83, 10)))
+	assert.Equal(t, 0, countRunningJobs(t, database, buildJobKey(83, 10, cfg.JobName)))
 }
 
 func TestProcessWebhook_Build_StatusNotFinal_DoesNothing(t *testing.T) {
 	beforeEach(t)
-	jobKey := buildJobKey(83, 10)
-	insertRunningJob(t, jobKey, 0, 7)
+	jobKey := buildJobKey(83, 10, cfg.JobName)
+	insertRunningJob(t, database, jobKey, 0, 7)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	// "running" is neither "success" nor "failed" so nothing should happen.
-	payload := jobPayload("running", 83, 10, 55)
+	payload := jobPayload("running", 83, 10, 55, cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := sendRequest(client, request)
 
 	assert.Equal(t, 200, rec.Code)
 
-	retryCount, err := getRetryCount(jobKey)
+	retryCount, err := db.GetRetryCount(database, jobKey)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, retryCount)
 }
 
 func TestProcessWebhook_Build_Success_Retries_Again(t *testing.T) {
 	beforeEach(t)
-	jobKey := buildJobKey(83, 10)
-	insertRunningJob(t, jobKey, 0, 7)
+	jobKey := buildJobKey(83, 10, cfg.JobName)
+	insertRunningJob(t, database, jobKey, 0, 7)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	client.MockJobs.EXPECT().
 		RetryJob(83, int64(55)).
 		Return(&gitlab.Job{ID: 55}, &gitlab.Response{}, nil)
 
-	payload := jobPayload("success", 83, 10, 55)
+	payload := jobPayload("success", 83, 10, 55, cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := sendRequest(client, request)
 
 	assert.Equal(t, 200, rec.Code)
 
-	retryCount, err := getRetryCount(jobKey)
+	retryCount, err := db.GetRetryCount(database, jobKey)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, retryCount)
 
-	assert.True(t, isRunningJob(jobKey))
+	assert.True(t, db.IsRunningJob(database, jobKey))
 }
 
 func TestProcessWebhook_Build_Success_ApprovesAndStopsTracking(t *testing.T) {
 	beforeEach(t)
-	jobKey := buildJobKey(83, 10)
-	insertRunningJob(t, jobKey, settings.RetryAmount, 7)
+	jobKey := buildJobKey(83, 10, cfg.JobName)
+	insertRunningJob(t, database, jobKey, cfg.RetryAmount, 7)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	client.MockMergeRequestApprovals.EXPECT().
 		GetConfiguration(83, int64(7)).
@@ -354,22 +342,22 @@ func TestProcessWebhook_Build_Success_ApprovesAndStopsTracking(t *testing.T) {
 		ApproveMergeRequest(83, int64(7), nil).
 		Return(&gitlab.MergeRequestApprovals{UserHasApproved: true}, &gitlab.Response{}, nil)
 
-	payload := jobPayload("success", 83, 10, 55)
+	payload := jobPayload("success", 83, 10, 55, cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := sendRequest(client, request)
 
 	assert.Equal(t, 200, rec.Code)
 
 	// job is finished: no longer tracked as a running plumber job
-	assert.False(t, isRunningJob(jobKey))
+	assert.False(t, db.IsRunningJob(database, jobKey))
 }
 
 func TestProcessWebhook_Build_Success_MR_AlreadyApproved_DoesNotReapprove(t *testing.T) {
 	beforeEach(t)
-	jobKey := buildJobKey(83, 10)
-	insertRunningJob(t, jobKey, settings.RetryAmount, 7)
+	jobKey := buildJobKey(83, 10, cfg.JobName)
+	insertRunningJob(t, database, jobKey, cfg.RetryAmount, 7)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	client.MockMergeRequestApprovals.EXPECT().
 		GetConfiguration(83, int64(7)).
@@ -377,20 +365,20 @@ func TestProcessWebhook_Build_Success_MR_AlreadyApproved_DoesNotReapprove(t *tes
 
 	// No ApproveMergeRequest expectation set: it must not be called again.
 
-	payload := jobPayload("success", 83, 10, 55)
+	payload := jobPayload("success", 83, 10, 55, cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := sendRequest(client, request)
 
 	assert.Equal(t, 200, rec.Code)
-	assert.False(t, isRunningJob(jobKey))
+	assert.False(t, db.IsRunningJob(database, jobKey))
 }
 
 func TestProcessWebhook_Build_Failed_UnapprovesMergeRequest(t *testing.T) {
 	beforeEach(t)
-	jobKey := buildJobKey(83, 10)
-	insertRunningJob(t, jobKey, 1, 7)
+	jobKey := buildJobKey(83, 10, cfg.JobName)
+	insertRunningJob(t, database, jobKey, 1, 7)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	client.MockMergeRequestApprovals.EXPECT().
 		GetConfiguration(83, int64(7)).
@@ -400,26 +388,26 @@ func TestProcessWebhook_Build_Failed_UnapprovesMergeRequest(t *testing.T) {
 		UnapproveMergeRequest(83, int64(7)).
 		Return(&gitlab.Response{}, nil)
 
-	payload := jobPayload("failed", 83, 10, 55)
+	payload := jobPayload("failed", 83, 10, 55, cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := sendRequest(client, request)
 
 	assert.Equal(t, 200, rec.Code)
-	assert.False(t, isRunningJob(jobKey))
+	assert.False(t, db.IsRunningJob(database, jobKey))
 }
 
 func TestProcessWebhook_Build_Failed_AlreadyUnapproved_DoesNotReUnapprove(t *testing.T) {
 	beforeEach(t)
-	jobKey := buildJobKey(83, 10)
-	insertRunningJob(t, jobKey, 1, 7)
+	jobKey := buildJobKey(83, 10, cfg.JobName)
+	insertRunningJob(t, database, jobKey, 1, 7)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	client.MockMergeRequestApprovals.EXPECT().
 		GetConfiguration(83, int64(7)).
 		Return(&gitlab.MergeRequestApprovals{UserHasApproved: false}, &gitlab.Response{}, nil)
 
-	payload := jobPayload("failed", 83, 10, 55)
+	payload := jobPayload("failed", 83, 10, 55, cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := sendRequest(client, request)
 
@@ -428,16 +416,16 @@ func TestProcessWebhook_Build_Failed_AlreadyUnapproved_DoesNotReUnapprove(t *tes
 
 func TestProcessWebhook_Build_Success_RetryJobFails_DoesNotIncrementCount(t *testing.T) {
 	beforeEach(t)
-	jobKey := buildJobKey(83, 10)
-	insertRunningJob(t, jobKey, 0, 7)
+	jobKey := buildJobKey(83, 10, cfg.JobName)
+	insertRunningJob(t, database, jobKey, 0, 7)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	client.MockJobs.EXPECT().
 		RetryJob(83, int64(55)).
 		Return(nil, &gitlab.Response{}, errors.New("gitlab is down"))
 
-	payload := jobPayload("success", 83, 10, 55)
+	payload := jobPayload("success", 83, 10, 55, cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := sendRequest(client, request)
 
@@ -447,37 +435,37 @@ func TestProcessWebhook_Build_Success_RetryJobFails_DoesNotIncrementCount(t *tes
 
 	// retry_count must be unchanged since the update only happens after a
 	// successful retry
-	retryCount, err := getRetryCount(jobKey)
+	retryCount, err := db.GetRetryCount(database, jobKey)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, retryCount)
-	assert.True(t, isRunningJob(jobKey))
+	assert.True(t, db.IsRunningJob(database, jobKey))
 }
 
 func TestProcessWebhook_Build_Success_GetConfigurationFails_JobStillDeleted(t *testing.T) {
 	beforeEach(t)
-	jobKey := buildJobKey(83, 10)
-	insertRunningJob(t, jobKey, settings.RetryAmount, 7)
+	jobKey := buildJobKey(83, 10, cfg.JobName)
+	insertRunningJob(t, database, jobKey, cfg.RetryAmount, 7)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	client.MockMergeRequestApprovals.EXPECT().
 		GetConfiguration(83, int64(7)).
 		Return(nil, &gitlab.Response{}, errors.New("network error"))
 
-	payload := jobPayload("success", 83, 10, 55)
+	payload := jobPayload("success", 83, 10, 55, cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := sendRequest(client, request)
 
 	assert.Equal(t, 200, rec.Code)
-	assert.False(t, isRunningJob(jobKey))
+	assert.False(t, db.IsRunningJob(database, jobKey))
 }
 
 func TestProcessWebhook_Build_Success_ApproveMergeRequestFails_JobStillDeleted(t *testing.T) {
 	beforeEach(t)
-	jobKey := buildJobKey(83, 10)
-	insertRunningJob(t, jobKey, settings.RetryAmount, 7)
+	jobKey := buildJobKey(83, 10, cfg.JobName)
+	insertRunningJob(t, database, jobKey, cfg.RetryAmount, 7)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	client.MockMergeRequestApprovals.EXPECT().
 		GetConfiguration(83, int64(7)).
@@ -487,7 +475,7 @@ func TestProcessWebhook_Build_Success_ApproveMergeRequestFails_JobStillDeleted(t
 		ApproveMergeRequest(83, int64(7), nil).
 		Return(nil, &gitlab.Response{}, errors.New("approval rejected"))
 
-	payload := jobPayload("success", 83, 10, 55)
+	payload := jobPayload("success", 83, 10, 55, cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := sendRequest(client, request)
 
@@ -495,34 +483,34 @@ func TestProcessWebhook_Build_Success_ApproveMergeRequestFails_JobStillDeleted(t
 
 	// same gap as above: the row is gone from running_jobs even though the
 	// approve call itself failed
-	assert.False(t, isRunningJob(jobKey))
+	assert.False(t, db.IsRunningJob(database, jobKey))
 }
 
 func TestProcessWebhook_Build_Failed_GetConfigurationFails_NoStateChange(t *testing.T) {
 	beforeEach(t)
-	jobKey := buildJobKey(83, 10)
-	insertRunningJob(t, jobKey, 1, 7)
+	jobKey := buildJobKey(83, 10, cfg.JobName)
+	insertRunningJob(t, database, jobKey, 1, 7)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	client.MockMergeRequestApprovals.EXPECT().
 		GetConfiguration(83, int64(7)).
 		Return(nil, &gitlab.Response{}, errors.New("network error"))
 
-	payload := jobPayload("failed", 83, 10, 55)
+	payload := jobPayload("failed", 83, 10, 55, cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := sendRequest(client, request)
 
 	assert.Equal(t, 200, rec.Code)
-	assert.False(t, isRunningJob(jobKey))
+	assert.False(t, db.IsRunningJob(database, jobKey))
 }
 
 func TestProcessWebhook_Build_Failed_UnapproveMergeRequestFails_NoStateChange(t *testing.T) {
 	beforeEach(t)
-	jobKey := buildJobKey(83, 10)
-	insertRunningJob(t, jobKey, 1, 7)
+	jobKey := buildJobKey(83, 10, cfg.JobName)
+	insertRunningJob(t, database, jobKey, 1, 7)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	client.MockMergeRequestApprovals.EXPECT().
 		GetConfiguration(83, int64(7)).
@@ -532,19 +520,19 @@ func TestProcessWebhook_Build_Failed_UnapproveMergeRequestFails_NoStateChange(t 
 		UnapproveMergeRequest(83, int64(7)).
 		Return(&gitlab.Response{}, errors.New("network error"))
 
-	payload := jobPayload("failed", 83, 10, 55)
+	payload := jobPayload("failed", 83, 10, 55, cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := sendRequest(client, request)
 
 	assert.Equal(t, 200, rec.Code)
-	assert.False(t, isRunningJob(jobKey))
+	assert.False(t, db.IsRunningJob(database, jobKey))
 }
 
 func TestProcessWebhook_OnRetryCommand_isRunningJob_ReturnsFalse(t *testing.T) {
 	beforeEach(t)
-	jobKey := buildJobKey(83, 10)
+	jobKey := buildJobKey(83, 10, cfg.JobName)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	opts := &gitlab.ListJobsOptions{
 		ListOptions: gitlab.ListOptions{
@@ -553,28 +541,28 @@ func TestProcessWebhook_OnRetryCommand_isRunningJob_ReturnsFalse(t *testing.T) {
 	}
 
 	client.MockJobs.EXPECT().ListPipelineJobs(83, int64(10), opts).
-		Return([]*gitlab.Job{{ID: 1, Name: settings.JobName}}, &gitlab.Response{}, nil)
+		Return([]*gitlab.Job{{ID: 1, Name: cfg.JobName}}, &gitlab.Response{}, nil)
 
 	client.MockJobs.EXPECT().
 		RetryJob(83, int64(1)).
 		Return(&gitlab.Job{ID: 1}, &gitlab.Response{}, nil)
 
-	payload := commentPayload("note", fmt.Sprintf("@%s", settings.RetryCommand), 10)
+	payload := commentPayload("note", fmt.Sprintf("@%s", cfg.RetryCommand), 10)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 
-	assert.False(t, isRunningJob(jobKey))
+	assert.False(t, db.IsRunningJob(database, jobKey))
 	rec := sendRequest(client, request)
 
 	assert.Equal(t, http.StatusCreated, rec.Code)
-	assert.True(t, isRunningJob(jobKey))
+	assert.True(t, db.IsRunningJob(database, jobKey))
 }
 
 func TestProcessWebhook_OnRetryCommand_isRunningJob_ReturnsTrue(t *testing.T) {
 	beforeEach(t)
-	jobKey := buildJobKey(83, 10)
-	insertRunningJob(t, jobKey, 1, 7)
+	jobKey := buildJobKey(83, 10, cfg.JobName)
+	insertRunningJob(t, database, jobKey, 1, 7)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	opts := &gitlab.ListJobsOptions{
 		ListOptions: gitlab.ListOptions{
@@ -583,24 +571,24 @@ func TestProcessWebhook_OnRetryCommand_isRunningJob_ReturnsTrue(t *testing.T) {
 	}
 
 	client.MockJobs.EXPECT().ListPipelineJobs(83, int64(10), opts).
-		Return([]*gitlab.Job{{ID: 1, Name: settings.JobName}}, &gitlab.Response{}, nil)
+		Return([]*gitlab.Job{{ID: 1, Name: cfg.JobName}}, &gitlab.Response{}, nil)
 
-	payload := commentPayload("note", fmt.Sprintf("@%s", settings.RetryCommand), 10)
+	payload := commentPayload("note", fmt.Sprintf("@%s", cfg.RetryCommand), 10)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 
 	// before requesting a retry we ensure this job is already running
-	assert.True(t, isRunningJob(jobKey))
+	assert.True(t, db.IsRunningJob(database, jobKey))
 	rec := sendRequest(client, request)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.True(t, isRunningJob(jobKey))
+	assert.True(t, db.IsRunningJob(database, jobKey))
 }
 
 func TestProcessWebhook_OnRetryCommand_InsertFails(t *testing.T) {
 	beforeEach(t)
-	forceReadOnly(t)
+	forceReadOnly(t, database)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	opts := &gitlab.ListJobsOptions{
 		ListOptions: gitlab.ListOptions{
@@ -610,58 +598,58 @@ func TestProcessWebhook_OnRetryCommand_InsertFails(t *testing.T) {
 
 	client.MockJobs.EXPECT().
 		ListPipelineJobs(83, int64(1), opts).
-		Return([]*gitlab.Job{{ID: 1, Name: settings.JobName}}, &gitlab.Response{}, nil)
+		Return([]*gitlab.Job{{ID: 1, Name: cfg.JobName}}, &gitlab.Response{}, nil)
 
 	client.MockJobs.EXPECT().
 		RetryJob(83, int64(1)).
 		Return(&gitlab.Job{ID: 1}, &gitlab.Response{}, nil)
 
-	payload := commentPayload("note", fmt.Sprintf("@%s retry", settings.RetryCommand), 1)
+	payload := commentPayload("note", fmt.Sprintf("@%s retry", cfg.RetryCommand), 1)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := sendRequest(client, request)
 
 	assert.Equal(t, 200, rec.Code)
 
-	jobKey := fmt.Sprintf("%d_%d_%s", 83, 1, settings.JobName)
-	assert.Equal(t, 0, countRunningJobs(t, jobKey))
+	jobKey := fmt.Sprintf("%d_%d_%s", 83, 1, cfg.JobName)
+	assert.Equal(t, 0, countRunningJobs(t, database, jobKey))
 }
 
 func TestProcessWebhook_HandleJobWebhook_UpdateFails(t *testing.T) {
 	beforeEach(t)
-	jobKey := buildJobKey(83, 10)
+	jobKey := buildJobKey(83, 10, cfg.JobName)
 
-	insertRunningJob(t, jobKey, 0, 7)
-	forceReadOnly(t)
+	insertRunningJob(t, database, jobKey, 0, 7)
+	forceReadOnly(t, database)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	client.MockJobs.EXPECT().
 		RetryJob(83, int64(55)).
 		Return(&gitlab.Job{ID: 55}, &gitlab.Response{}, nil)
 
-	payload := jobPayload("success", 83, 10, 55)
+	payload := jobPayload("success", 83, 10, 55, cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := sendRequest(client, request)
 
 	assert.Equal(t, 200, rec.Code)
 
-	retryCount, err := getRetryCount(jobKey)
+	retryCount, err := db.GetRetryCount(database, jobKey)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, retryCount)
 
-	assert.True(t, isRunningJob(jobKey))
+	assert.True(t, db.IsRunningJob(database, jobKey))
 }
 
 func TestProcessWebhook_HandleJobWebhook_GetRetryCountFails(t *testing.T) {
 	beforeEach(t)
-	jobKey := buildJobKey(83, 10)
+	jobKey := buildJobKey(83, 10, cfg.JobName)
 
-	insertRunningJob(t, jobKey, 0, 7)
-	updateRetryCount(t, jobKey, "not-a-number")
+	insertRunningJob(t, database, jobKey, 0, 7)
+	updateRetryCount(t, database, jobKey, "not-a-number")
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
-	payload := jobPayload("success", 83, 10, 55)
+	payload := jobPayload("success", 83, 10, 55, cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := sendRequest(client, request)
 
@@ -670,16 +658,16 @@ func TestProcessWebhook_HandleJobWebhook_GetRetryCountFails(t *testing.T) {
 
 func TestProcessWebhook_HandleJobWebhook_GetMergeRequestIid_Fails(t *testing.T) {
 	beforeEach(t)
-	jobKey := buildJobKey(83, 10)
+	jobKey := buildJobKey(83, 10, cfg.JobName)
 
 	// retry_count is valid so getRetryCount succeeds; merge_request_id is
 	// corrupted so the very next call, getMergeRequestIid, fails.
-	insertRunningJob(t, jobKey, 1, 7)
-	updateMergeRequestIid(t, jobKey, "not-a-number")
+	insertRunningJob(t, database, jobKey, 1, 7)
+	updateMergeRequestIid(t, database, jobKey, "not-a-number")
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
-	payload := jobPayload("success", 83, 10, 55)
+	payload := jobPayload("success", 83, 10, 55, cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := sendRequest(client, request)
 
@@ -688,11 +676,11 @@ func TestProcessWebhook_HandleJobWebhook_GetMergeRequestIid_Fails(t *testing.T) 
 
 func TestProcessWebhook_OnJobInProgress_GetMergeRequestIid_Fails(t *testing.T) {
 	beforeEach(t)
-	jobKey := buildJobKey(83, 10)
-	insertRunningJob(t, jobKey, 0, 7)
-	updateMergeRequestIid(t, jobKey, "not-a-number")
+	jobKey := buildJobKey(83, 10, cfg.JobName)
+	insertRunningJob(t, database, jobKey, 0, 7)
+	updateMergeRequestIid(t, database, jobKey, "not-a-number")
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
 	client.MockJobs.EXPECT().
 		RetryJob(83, int64(55)).
@@ -704,28 +692,54 @@ func TestProcessWebhook_OnJobInProgress_GetMergeRequestIid_Fails(t *testing.T) {
 		Status:        "success",
 		ProjectId:     83,
 		PipelineId:    10,
-		Name:          settings.JobName,
+		Name:          cfg.JobName,
 	}
 
-	onJobInProgress(client.Client, jobWebhook, jobKey, 0)
+	handler := &WebhookHandler{
+		Client:   client.Client,
+		Cfg:      cfg,
+		Logger:   logger,
+		Database: database,
+	}
+	handler.onJobInProgress(jobWebhook, jobKey, 0)
 
-	retryCount, err := getRetryCount(jobKey)
+	retryCount, err := db.GetRetryCount(database, jobKey)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, retryCount)
 }
 
 func TestProcessWebhook_OnJobFinished_DeleteJobFails(t *testing.T) {
 	beforeEach(t)
-	jobKey := buildJobKey(83, 10)
-	insertRunningJob(t, jobKey, settings.RetryAmount, 7)
-	forceReadOnly(t)
+	jobKey := buildJobKey(83, 10, cfg.JobName)
+	insertRunningJob(t, database, jobKey, cfg.RetryAmount, 7)
+	forceReadOnly(t, database)
 
-	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(settings.GitlabInstance))
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
 
-	payload := jobPayload("success", 83, 10, 55)
+	payload := jobPayload("success", 83, 10, 55, cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := sendRequest(client, request)
 
 	assert.Equal(t, 200, rec.Code)
-	assert.True(t, isRunningJob(jobKey))
+	assert.True(t, db.IsRunningJob(database, jobKey))
+}
+
+func TestProcessWebhook_OnJobFailure_DeleteJobFails(t *testing.T) {
+	beforeEach(t)
+	jobKey := buildJobKey(83, 10, cfg.JobName)
+	insertRunningJob(t, database, jobKey, 1, 7)
+	forceReadOnly(t, database)
+
+	client := gitlabtesting.NewTestClient(t, gitlab.WithBaseURL(cfg.GitlabInstance))
+
+	payload := jobPayload("failed", 83, 10, 55, cfg.JobName)
+	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
+	rec := sendRequest(client, request)
+
+	assert.Equal(t, 200, rec.Code)
+	assert.True(t, db.IsRunningJob(database, jobKey))
+
+	retryCount, err := db.GetRetryCount(database, jobKey)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, retryCount)
 }
