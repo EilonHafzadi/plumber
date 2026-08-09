@@ -7,3 +7,5 @@ retry_amount = 3
 
 gitlab_instance = "https://gitlab.com"
 access_token = "example-access-token"
+webhook_signing_token = "your-webhook-signing-token"
+max_timestamp_skew = "5m"

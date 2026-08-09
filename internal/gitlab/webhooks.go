@@ -1,14 +1,21 @@
 package gitlab
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"plumber/internal/config"
 	"plumber/internal/db"
+	"strconv"
 	"strings"
+	"time"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go/v2"
 	"go.uber.org/zap"
@@ -236,10 +243,65 @@ func (h *WebhookHandler) handleJobWebhook(w http.ResponseWriter, body []byte) {
 
 }
 
+func (h *WebhookHandler) verifyGitlabWebhook(signingToken string, webhookID string, webhookTimestamp string, signatureHeader string, body []byte) error {
+	// if no signing token were defined by user we just skip the verification steps.
+	if signingToken == "" {
+		return nil
+	}
+
+	if webhookID == "" || webhookTimestamp == "" || signatureHeader == "" {
+		return errors.New("missing webhook-id, webhook-timestamp, or webhook-signature header")
+	}
+
+	tsInt, err := strconv.ParseInt(webhookTimestamp, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid webhook-timestamp: %w", err)
+	}
+
+	maxTimestampSkew, err := time.ParseDuration(h.Cfg.MaxTimestampSkew)
+	if err != nil {
+		return fmt.Errorf("invalid max timestamp skew")
+	}
+
+	ts := time.Unix(tsInt, 0)
+	if diff := time.Since(ts); diff > maxTimestampSkew || diff < -maxTimestampSkew {
+		return fmt.Errorf("webhook timestamp out of tolerance: %v", diff)
+	}
+
+	rawKeyB64 := strings.TrimPrefix(signingToken, "whsec_")
+	key, err := base64.StdEncoding.DecodeString(rawKeyB64)
+
+	if err != nil {
+		return fmt.Errorf("invalid signing token encoding: %w", err)
+	}
+
+	message := webhookID + "." + webhookTimestamp + "." + string(body)
+
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(message))
+	expected := "v1," + base64.StdEncoding.EncodeToString(mac.Sum(nil))
+
+	for sig := range strings.FieldsSeq(signatureHeader) {
+		if subtle.ConstantTimeCompare([]byte(expected), []byte(sig)) == 1 {
+			return nil
+		}
+	}
+
+	return errors.New("signature mismatch")
+}
+
 func ProcessWebhook(w http.ResponseWriter, r *http.Request, h *WebhookHandler) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "failed to read body", http.StatusBadRequest)
+		return
+	}
+
+	signingToken := h.Cfg.WebhookSigningToken
+	err = h.verifyGitlabWebhook(signingToken, r.Header.Get("webhook-id"), r.Header.Get("webhook-timestamp"), r.Header.Get("webhook-signature"), body)
+
+	if err != nil {
+		h.Logger.Error("failed to verify gitlab webhook: ", zap.Error(err))
 		return
 	}
 
