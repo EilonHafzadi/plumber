@@ -434,8 +434,7 @@ func TestProcessWebhook_Build_Success_RetryJobFails_DoesNotIncrementCount(t *tes
 	// logs and returns - so the response is still 200.
 	assert.Equal(t, 200, rec.Code)
 
-	// retry_count must be unchanged since the update only happens after a
-	// successful retry
+	// retry_count is rolled back when the retry request fails.
 	retryCount, err := db.GetRetryCount(fixture.Database, jobKey)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, retryCount)
@@ -624,10 +623,6 @@ func TestProcessWebhook_HandleJobWebhook_UpdateFails(t *testing.T) {
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
 
-	client.MockJobs.EXPECT().
-		RetryJob(83, int64(55)).
-		Return(&gitlabapi.Job{ID: 55}, &gitlabapi.Response{}, nil)
-
 	payload := jobPayload("success", 83, 10, 55, fixture.Cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := fixture.sendRequest(client, request)
@@ -682,10 +677,6 @@ func TestProcessWebhook_OnJobInProgress_GetMergeRequestIid_Fails(t *testing.T) {
 	updateMergeRequestIid(t, fixture.Database, jobKey, "not-a-number")
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
-
-	client.MockJobs.EXPECT().
-		RetryJob(83, int64(55)).
-		Return(&gitlabapi.Job{ID: 55}, &gitlabapi.Response{}, nil)
 
 	jobWebhook := &gitlab.JobWebhook{
 		GitlabWebhook: gitlab.GitlabWebhook{ObjectKind: "build", ProjectId: 83},

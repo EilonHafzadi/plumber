@@ -126,24 +126,52 @@ func (h *WebhookHandler) HandleCommentWebhook(w http.ResponseWriter, body []byte
 
 }
 
+func (h *WebhookHandler) IncrementRetryCount(jobKey string) error {
+	_, err := h.Database.Exec("UPDATE running_jobs SET retry_count = retry_count + 1 WHERE key = ?", jobKey)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (h *WebhookHandler) DecrementRetryCount(jobKey string) error {
+	_, err := h.Database.Exec("UPDATE running_jobs SET retry_count = retry_count - 1 WHERE key = ?", jobKey)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (h *WebhookHandler) OnJobInProgress(jobWebhook *JobWebhook, jobKey string, retryCount int) {
 	jobName := jobWebhook.Name
 
-	_, err := RetryJob(h.Client, jobWebhook.ProjectId, jobWebhook.Id)
-	if err != nil {
-		h.Logger.Error("failed to retry job", zap.String("job_name", jobName), zap.Error(err))
-		return
-	}
-
 	mergeRequestIid, err := db.GetMergeRequestIid(h.Database, jobKey)
 	if err != nil {
-		h.Logger.Error("failed to get merge request id", zap.Error(err))
+		h.Logger.Error("failed to get merge request iid", zap.Error(err))
 		return
 	}
 
-	_, err = h.Database.Exec("UPDATE running_jobs SET retry_count = retry_count + 1 WHERE key = ?", jobKey)
+	err = h.IncrementRetryCount(jobKey)
+
 	if err != nil {
-		h.Logger.Error("failed to update retry_count of job in merge request", zap.Int64("merge_request", mergeRequestIid), zap.String("job_name", jobName), zap.Error(err))
+		h.Logger.Error("failed to increment retry count of job in merge request",
+			zap.Int64("merge_request", mergeRequestIid),
+			zap.String("job_name", jobName),
+			zap.Error(err),
+		)
+		return
+	}
+
+	_, err = RetryJob(h.Client, jobWebhook.ProjectId, jobWebhook.Id)
+	if err != nil {
+		rollbackErr := h.DecrementRetryCount(jobKey)
+		if rollbackErr != nil {
+			h.Logger.Error("failed to roll back retry_count of job in merge request", zap.Int64("merge_request", mergeRequestIid), zap.String("job_name", jobName), zap.Error(rollbackErr))
+		}
+
+		h.Logger.Error("failed to retry job", zap.String("job_name", jobName), zap.Error(err))
 		return
 	}
 
