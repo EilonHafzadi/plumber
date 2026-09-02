@@ -48,7 +48,7 @@ func main() {
 	cfg, err := config.NewConfig(configPath)
 
 	if err != nil {
-		logger.Fatal("failed to initialize settings", zap.Error(err))
+		logger.Fatal("failed to initialize config", zap.Error(err))
 	}
 
 	gitlabClient, err := gitlab.NewGitlabClient(cfg)
@@ -79,12 +79,12 @@ func main() {
 	})
 
 	serverAddress := fmt.Sprintf("%s:%d", cfg.ServerIP, cfg.ServerPort)
-	logger.Info("server started on", zap.String("address", serverAddress))
+	logger.Info("plumber started on", zap.String("address", serverAddress))
 
 	err = http.ListenAndServe(serverAddress, nil)
 
 	if err != nil {
-		logger.Fatal("failed to start http server", zap.Error(err))
+		logger.Fatal("failed to start http plumber", zap.Error(err))
 	}
 
 }

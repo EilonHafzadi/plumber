@@ -12,12 +12,12 @@ import (
 var database *sql.DB
 
 func beforeEach(t *testing.T) {
-	database = SetupTestDB(t)
+	database = setupTestDB(t)
 }
 
 func TestIsRunningJob_ReturnsTrue(t *testing.T) {
 	beforeEach(t)
-	InsertRunningJob(t, database, "job_key", 1, 42)
+	insertRunningJob(t, database, "job_key", 1, 42)
 
 	assert.True(t, IsRunningJob(database, "job_key"))
 }
@@ -30,7 +30,7 @@ func TestIsRunningJob_ReturnsFalse(t *testing.T) {
 
 func TestIsRunningJob_ReturnsError(t *testing.T) {
 	beforeEach(t)
-	InsertRunningJob(t, database, "job_key", 1, 42)
+	insertRunningJob(t, database, "job_key", 1, 42)
 
 	err := database.Close()
 	if err != nil {
@@ -42,7 +42,7 @@ func TestIsRunningJob_ReturnsError(t *testing.T) {
 
 func TestDeleteJob_Success(t *testing.T) {
 	beforeEach(t)
-	InsertRunningJob(t, database, "job_key", 1, 42)
+	insertRunningJob(t, database, "job_key", 1, 42)
 
 	assert.True(t, IsRunningJob(database, "job_key"))
 	err := DeleteJob(database, "job_key")
@@ -63,7 +63,7 @@ func TestDeleteJob_JobDoesNotExist(t *testing.T) {
 
 func TestDeleteJob_ReturnsError(t *testing.T) {
 	beforeEach(t)
-	InsertRunningJob(t, database, "job_key", 1, 42)
+	insertRunningJob(t, database, "job_key", 1, 42)
 
 	err := database.Close()
 	if err != nil {
@@ -76,7 +76,7 @@ func TestDeleteJob_ReturnsError(t *testing.T) {
 
 func TestGetRetryCount_ReturnsStoredValue(t *testing.T) {
 	beforeEach(t)
-	InsertRunningJob(t, database, "job_key", 2, 42)
+	insertRunningJob(t, database, "job_key", 2, 42)
 
 	count, err := GetRetryCount(database, "job_key")
 
@@ -93,7 +93,7 @@ func TestGetRetryCount_JobDoesNotExist(t *testing.T) {
 
 func TestGetMergeRequestIid_ReturnsStoredValue(t *testing.T) {
 	beforeEach(t)
-	InsertRunningJob(t, database, "job_key", 1, 99)
+	insertRunningJob(t, database, "job_key", 1, 99)
 
 	iid, err := GetMergeRequestIid(database, "job_key")
 

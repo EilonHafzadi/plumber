@@ -57,7 +57,13 @@ type WebhookHandler struct {
 	Database *sql.DB
 }
 
-func (h *WebhookHandler) onRetryCommand(gitlabClient *gitlab.Client, w http.ResponseWriter, commentWebhook *CommentWebhook) {
+type SignedToken struct {
+	WebhookId        string
+	WebhookTimestamp string
+	WebhookSignature string
+}
+
+func (h *WebhookHandler) OnRetryCommand(gitlabClient *gitlab.Client, w http.ResponseWriter, commentWebhook *CommentWebhook) {
 	jobId, err := GetJobId(gitlabClient, commentWebhook, h.Cfg)
 
 	if err != nil {
@@ -97,7 +103,7 @@ func (h *WebhookHandler) onRetryCommand(gitlabClient *gitlab.Client, w http.Resp
 	w.WriteHeader(http.StatusCreated)
 }
 
-func (h *WebhookHandler) handleCommentWebhook(w http.ResponseWriter, body []byte) {
+func (h *WebhookHandler) HandleCommentWebhook(w http.ResponseWriter, body []byte) {
 	var commentWebhook CommentWebhook
 
 	err := json.Unmarshal(body, &commentWebhook)
@@ -115,12 +121,12 @@ func (h *WebhookHandler) handleCommentWebhook(w http.ResponseWriter, body []byte
 
 	// if the comment is a bot mention, only then we retry
 	if strings.Contains(note, h.Cfg.RetryCommand) {
-		h.onRetryCommand(h.Client, w, &commentWebhook)
+		h.OnRetryCommand(h.Client, w, &commentWebhook)
 	}
 
 }
 
-func (h *WebhookHandler) onJobInProgress(jobWebhook *JobWebhook, jobKey string, retryCount int) {
+func (h *WebhookHandler) OnJobInProgress(jobWebhook *JobWebhook, jobKey string, retryCount int) {
 	jobName := jobWebhook.Name
 
 	_, err := RetryJob(h.Client, jobWebhook.ProjectId, jobWebhook.Id)
@@ -149,7 +155,7 @@ func (h *WebhookHandler) onJobInProgress(jobWebhook *JobWebhook, jobKey string, 
 
 }
 
-func (h *WebhookHandler) onJobFinished(jobWebhook *JobWebhook, mergeRequestIid int64) {
+func (h *WebhookHandler) OnJobFinished(jobWebhook *JobWebhook, mergeRequestIid int64) {
 	jobName := jobWebhook.Name
 	jobKey := fmt.Sprintf("%d_%d_%s", jobWebhook.ProjectId, jobWebhook.PipelineId, jobName)
 
@@ -174,7 +180,7 @@ func (h *WebhookHandler) onJobFinished(jobWebhook *JobWebhook, mergeRequestIid i
 
 }
 
-func (h *WebhookHandler) onJobFailure(jobWebhook *JobWebhook, mergeRequestIid int64, retryCount int) {
+func (h *WebhookHandler) OnJobFailure(jobWebhook *JobWebhook, mergeRequestIid int64, retryCount int) {
 	jobKey := fmt.Sprintf("%d_%d_%s", jobWebhook.ProjectId, jobWebhook.PipelineId, h.Cfg.JobName)
 	err := db.DeleteJob(h.Database, jobKey)
 
@@ -199,7 +205,7 @@ func (h *WebhookHandler) onJobFailure(jobWebhook *JobWebhook, mergeRequestIid in
 
 }
 
-func (h *WebhookHandler) handleJobWebhook(w http.ResponseWriter, body []byte) {
+func (h *WebhookHandler) HandleJobWebhook(w http.ResponseWriter, body []byte) {
 	var jobWebhook JobWebhook
 
 	err := json.Unmarshal(body, &jobWebhook)
@@ -234,26 +240,34 @@ func (h *WebhookHandler) handleJobWebhook(w http.ResponseWriter, body []byte) {
 	}
 
 	if jobWebhook.Status == "success" && retryCount >= h.Cfg.RetryAmount {
-		h.onJobFinished(&jobWebhook, mergeRequestIid)
+		h.OnJobFinished(&jobWebhook, mergeRequestIid)
 	} else if jobWebhook.Status == "success" && retryCount < h.Cfg.RetryAmount {
-		h.onJobInProgress(&jobWebhook, jobKey, retryCount)
+		h.OnJobInProgress(&jobWebhook, jobKey, retryCount)
 	} else if jobWebhook.Status == "failed" {
-		h.onJobFailure(&jobWebhook, mergeRequestIid, retryCount)
+		h.OnJobFailure(&jobWebhook, mergeRequestIid, retryCount)
 	}
 
 }
 
-func (h *WebhookHandler) verifyGitlabWebhook(signingToken string, webhookID string, webhookTimestamp string, signatureHeader string, body []byte) error {
+func (h *WebhookHandler) verifyGitlabWebhook(signedToken *SignedToken, body []byte) error {
 	// if no signing token were defined by user we just skip the verification steps.
-	if signingToken == "" {
+	if h.Cfg.WebhookSigningToken == "" {
 		return nil
 	}
 
-	if webhookID == "" || webhookTimestamp == "" || signatureHeader == "" {
-		return errors.New("missing webhook-id, webhook-timestamp, or webhook-signature header")
+	if signedToken.WebhookId == "" {
+		return errors.New("missing webhook-id")
 	}
 
-	tsInt, err := strconv.ParseInt(webhookTimestamp, 10, 64)
+	if signedToken.WebhookSignature == "" {
+		return errors.New("missing webhook-signature-header")
+	}
+
+	if signedToken.WebhookTimestamp == "" {
+		return errors.New("missing webhook-timestamp")
+	}
+
+	tsInt, err := strconv.ParseInt(signedToken.WebhookTimestamp, 10, 64)
 	if err != nil {
 		return fmt.Errorf("invalid webhook-timestamp: %w", err)
 	}
@@ -268,20 +282,20 @@ func (h *WebhookHandler) verifyGitlabWebhook(signingToken string, webhookID stri
 		return fmt.Errorf("webhook timestamp out of tolerance: %v", diff)
 	}
 
-	rawKeyB64 := strings.TrimPrefix(signingToken, "whsec_")
+	rawKeyB64 := strings.TrimPrefix(h.Cfg.WebhookSigningToken, "whsec_")
 	key, err := base64.StdEncoding.DecodeString(rawKeyB64)
 
 	if err != nil {
 		return fmt.Errorf("invalid signing token encoding: %w", err)
 	}
 
-	message := webhookID + "." + webhookTimestamp + "." + string(body)
+	message := signedToken.WebhookId + "." + signedToken.WebhookTimestamp + "." + string(body)
 
 	mac := hmac.New(sha256.New, key)
 	mac.Write([]byte(message))
 	expected := "v1," + base64.StdEncoding.EncodeToString(mac.Sum(nil))
 
-	for sig := range strings.FieldsSeq(signatureHeader) {
+	for sig := range strings.FieldsSeq(signedToken.WebhookSignature) {
 		if subtle.ConstantTimeCompare([]byte(expected), []byte(sig)) == 1 {
 			return nil
 		}
@@ -291,14 +305,22 @@ func (h *WebhookHandler) verifyGitlabWebhook(signingToken string, webhookID stri
 }
 
 func ProcessWebhook(w http.ResponseWriter, r *http.Request, h *WebhookHandler) {
-	body, err := io.ReadAll(r.Body)
+	// Limit the request size to 3MB since we only expect lightweight requests such as comment and job webhooks
+	const maxReqSize = 3 * 1024 * 1024
+	payload, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxReqSize))
+
 	if err != nil {
 		http.Error(w, "failed to read body", http.StatusBadRequest)
 		return
 	}
 
-	signingToken := h.Cfg.WebhookSigningToken
-	err = h.verifyGitlabWebhook(signingToken, r.Header.Get("webhook-id"), r.Header.Get("webhook-timestamp"), r.Header.Get("webhook-signature"), body)
+	signedToken := SignedToken{
+		WebhookId:        r.Header.Get("webhook-id"),
+		WebhookTimestamp: r.Header.Get("webhook-timestamp"),
+		WebhookSignature: r.Header.Get("webhook-signature"),
+	}
+
+	err = h.verifyGitlabWebhook(&signedToken, payload)
 
 	if err != nil {
 		h.Logger.Error("failed to verify gitlab webhook: ", zap.Error(err))
@@ -307,17 +329,18 @@ func ProcessWebhook(w http.ResponseWriter, r *http.Request, h *WebhookHandler) {
 
 	var base GitlabWebhook
 
-	err = json.Unmarshal(body, &base)
+	err = json.Unmarshal(payload, &base)
 	if err != nil {
+		h.Logger.Error("failed to decode webhook: ", zap.Error(err))
 		http.Error(w, "failed to decode webhook", http.StatusBadRequest)
 		return
 	}
 
 	switch base.ObjectKind {
 	case "note":
-		h.handleCommentWebhook(w, body)
+		h.HandleCommentWebhook(w, payload)
 	case "build":
-		h.handleJobWebhook(w, body)
+		h.HandleJobWebhook(w, payload)
 	default:
 		http.Error(w, "unsupported webhook type", http.StatusBadRequest)
 	}
