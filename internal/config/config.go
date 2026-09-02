@@ -19,24 +19,25 @@ type Config struct {
 }
 
 func NewConfig(configPath string) (*Config, error) {
-	viper.SetConfigName("config")
-	viper.SetConfigType("toml")
-	viper.AddConfigPath(configPath)
+	v := viper.New()
+	v.SetConfigName("config")
+	v.SetConfigType("toml")
+	v.AddConfigPath(configPath)
 
-	err := viper.ReadInConfig()
+	err := v.ReadInConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
 	return &Config{
-		GitlabInstance:      viper.GetString("gitlab_instance"),
-		AccessToken:         viper.GetString("access_token"),
-		ServerIP:            viper.GetString("server_ip"),
-		ServerPort:          viper.GetInt("server_port"),
-		JobName:             viper.GetString("job_name"),
-		RetryCommand:        viper.GetString("retry_command"),
-		RetryAmount:         viper.GetInt("retry_amount"),
-		WebhookSigningToken: viper.GetString("webhook_signing_token"),
-		MaxTimestampSkew:    viper.GetString("max_timestamp_skew"),
+		GitlabInstance:      v.GetString("gitlab_instance"),
+		AccessToken:         v.GetString("access_token"),
+		ServerIP:            v.GetString("server_ip"),
+		ServerPort:          v.GetInt("server_port"),
+		JobName:             v.GetString("job_name"),
+		RetryCommand:        v.GetString("retry_command"),
+		RetryAmount:         v.GetInt("retry_amount"),
+		WebhookSigningToken: v.GetString("webhook_signing_token"),
+		MaxTimestampSkew:    v.GetString("max_timestamp_skew"),
 	}, nil
 }
