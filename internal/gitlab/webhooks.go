@@ -187,16 +187,16 @@ func (h *WebhookHandler) OnJobFinished(jobWebhook *JobWebhook, mergeRequestIid i
 	jobName := jobWebhook.Name
 	jobKey := fmt.Sprintf("%d_%d_%s", jobWebhook.ProjectId, jobWebhook.PipelineId, jobName)
 
-	err := db.DeleteJob(h.Database, jobKey)
-
-	if err != nil {
-		h.Logger.Error("failed to delete job from running jobs", zap.String("job_name", jobName), zap.Error(err))
-		return
-	}
-
 	approved, err := ApproveMergeRequest(h.Client, jobWebhook, mergeRequestIid)
 	if err != nil {
 		h.Logger.Error("failed to approve merge request", zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
+		return
+	}
+
+	err = db.DeleteJob(h.Database, jobKey)
+
+	if err != nil {
+		h.Logger.Error("failed to delete job from running jobs", zap.String("job_name", jobName), zap.Error(err))
 		return
 	}
 
@@ -210,18 +210,19 @@ func (h *WebhookHandler) OnJobFinished(jobWebhook *JobWebhook, mergeRequestIid i
 
 func (h *WebhookHandler) OnJobFailure(jobWebhook *JobWebhook, mergeRequestIid int64, retryCount int) {
 	jobKey := fmt.Sprintf("%d_%d_%s", jobWebhook.ProjectId, jobWebhook.PipelineId, h.Cfg.JobName)
-	err := db.DeleteJob(h.Database, jobKey)
-
-	if err != nil {
-		h.Logger.Error("failed to delete job from running jobs", zap.String("job_name", jobWebhook.Name), zap.Error(err))
-		return
-	}
 
 	unapproved, err := UnapproveMergeRequest(h.Client, jobWebhook, mergeRequestIid)
 	jobName := jobWebhook.Name
 
 	if err != nil {
 		h.Logger.Error("failed to unapprove merge request", zap.String("job_name", jobName), zap.Error(err))
+		return
+	}
+
+	err = db.DeleteJob(h.Database, jobKey)
+
+	if err != nil {
+		h.Logger.Error("failed to delete job from running jobs", zap.String("job_name", jobWebhook.Name), zap.Error(err))
 		return
 	}
 
