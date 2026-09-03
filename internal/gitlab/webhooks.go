@@ -126,22 +126,37 @@ func (h *WebhookHandler) HandleCommentWebhook(w http.ResponseWriter, body []byte
 
 }
 
-func (h *WebhookHandler) IncrementRetryCount(jobKey string) error {
-	_, err := h.Database.Exec("UPDATE running_jobs SET retry_count = retry_count + 1 WHERE key = ?", jobKey)
+func (h *WebhookHandler) IncrementRetryCount(jobKey string) (bool, error) {
+	res, err := h.Database.Exec(
+		"UPDATE running_jobs SET retry_count = retry_count + 1 WHERE key = ? AND retry_count < ?",
+		jobKey,
+		h.Cfg.RetryAmount,
+	)
+
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	return nil
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+
+	return rowsAffected == 1, nil
 }
 
-func (h *WebhookHandler) DecrementRetryCount(jobKey string) error {
-	_, err := h.Database.Exec("UPDATE running_jobs SET retry_count = retry_count - 1 WHERE key = ?", jobKey)
+func (h *WebhookHandler) DecrementRetryCount(jobKey string) (bool, error) {
+	res, err := h.Database.Exec("UPDATE running_jobs SET retry_count = retry_count - 1 WHERE key = ?", jobKey)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	return nil
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+
+	return rowsAffected == 1, nil
 }
 
 func (h *WebhookHandler) OnJobInProgress(jobWebhook *JobWebhook, jobKey string, retryCount int) {
@@ -153,7 +168,7 @@ func (h *WebhookHandler) OnJobInProgress(jobWebhook *JobWebhook, jobKey string, 
 		return
 	}
 
-	err = h.IncrementRetryCount(jobKey)
+	reserved, err := h.IncrementRetryCount(jobKey)
 
 	if err != nil {
 		h.Logger.Error("failed to increment retry count of job in merge request",
@@ -164,11 +179,18 @@ func (h *WebhookHandler) OnJobInProgress(jobWebhook *JobWebhook, jobKey string, 
 		return
 	}
 
+	if !reserved {
+		h.Logger.Warn("retry limit already reached", zap.String("job_name", jobName))
+		return
+	}
+
 	_, err = RetryJob(h.Client, jobWebhook.ProjectId, jobWebhook.Id)
 	if err != nil {
-		rollbackErr := h.DecrementRetryCount(jobKey)
+		rolledBack, rollbackErr := h.DecrementRetryCount(jobKey)
 		if rollbackErr != nil {
 			h.Logger.Error("failed to roll back retry_count of job in merge request", zap.Int64("merge_request", mergeRequestIid), zap.String("job_name", jobName), zap.Error(rollbackErr))
+		} else if !rolledBack {
+			h.Logger.Error("failed to roll back retry_count of job in merge request", zap.Int64("merge_request", mergeRequestIid), zap.String("job_name", jobName))
 		}
 
 		h.Logger.Error("failed to retry job", zap.String("job_name", jobName), zap.Error(err))

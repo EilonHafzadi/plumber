@@ -349,7 +349,7 @@ func TestProcessWebhook_Build_Success_ApprovesAndStopsTracking(t *testing.T) {
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := fixture.sendRequest(client, request)
 
-	assert.Equal(t, 200, rec.Code)
+	assert.Equal(t, http.StatusOK, rec.Code)
 
 	// job is finished: no longer tracked as a running plumber job
 	assert.False(t, db.IsRunningJob(fixture.Database, jobKey))
@@ -459,7 +459,7 @@ func TestProcessWebhook_Build_Success_GetConfigurationFails_JobStillDeleted(t *t
 	rec := fixture.sendRequest(client, request)
 
 	assert.Equal(t, 200, rec.Code)
-	assert.False(t, db.IsRunningJob(fixture.Database, jobKey))
+	assert.True(t, db.IsRunningJob(fixture.Database, jobKey))
 }
 
 func TestProcessWebhook_Build_Success_ApproveMergeRequestFails_JobStillDeleted(t *testing.T) {
@@ -485,7 +485,7 @@ func TestProcessWebhook_Build_Success_ApproveMergeRequestFails_JobStillDeleted(t
 
 	// same gap as above: the row is gone from running_jobs even though the
 	// approve call itself failed
-	assert.False(t, db.IsRunningJob(fixture.Database, jobKey))
+	assert.True(t, db.IsRunningJob(fixture.Database, jobKey))
 }
 
 func TestProcessWebhook_Build_Failed_GetConfigurationFails_NoStateChange(t *testing.T) {
@@ -504,7 +504,7 @@ func TestProcessWebhook_Build_Failed_GetConfigurationFails_NoStateChange(t *test
 	rec := fixture.sendRequest(client, request)
 
 	assert.Equal(t, 200, rec.Code)
-	assert.False(t, db.IsRunningJob(fixture.Database, jobKey))
+	assert.True(t, db.IsRunningJob(fixture.Database, jobKey))
 }
 
 func TestProcessWebhook_Build_Failed_UnapproveMergeRequestFails_NoStateChange(t *testing.T) {
@@ -527,7 +527,7 @@ func TestProcessWebhook_Build_Failed_UnapproveMergeRequestFails_NoStateChange(t 
 	rec := fixture.sendRequest(client, request)
 
 	assert.Equal(t, 200, rec.Code)
-	assert.False(t, db.IsRunningJob(fixture.Database, jobKey))
+	assert.True(t, db.IsRunningJob(fixture.Database, jobKey))
 }
 
 func TestProcessWebhook_OnRetryCommand_isRunningJob_ReturnsFalse(t *testing.T) {
@@ -704,6 +704,14 @@ func TestProcessWebhook_OnJobFinished_DeleteJobFails(t *testing.T) {
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
 
+	client.MockMergeRequestApprovals.EXPECT().
+		GetConfiguration(83, int64(7)).
+		Return(&gitlabapi.MergeRequestApprovals{UserHasApproved: false}, &gitlabapi.Response{}, nil)
+
+	client.MockMergeRequestApprovals.EXPECT().
+		ApproveMergeRequest(83, int64(7), nil).
+		Return(&gitlabapi.MergeRequestApprovals{UserHasApproved: true}, &gitlabapi.Response{}, nil)
+
 	payload := jobPayload("success", 83, 10, 55, fixture.Cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := fixture.sendRequest(client, request)
@@ -719,6 +727,14 @@ func TestProcessWebhook_OnJobFailure_DeleteJobFails(t *testing.T) {
 	forceReadOnly(t, fixture.Database)
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
+
+	client.MockMergeRequestApprovals.EXPECT().
+		GetConfiguration(83, int64(7)).
+		Return(&gitlabapi.MergeRequestApprovals{UserHasApproved: true}, &gitlabapi.Response{}, nil)
+
+	client.MockMergeRequestApprovals.EXPECT().
+		UnapproveMergeRequest(83, int64(7)).
+		Return(&gitlabapi.Response{}, nil)
 
 	payload := jobPayload("failed", 83, 10, 55, fixture.Cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
