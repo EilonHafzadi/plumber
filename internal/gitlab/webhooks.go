@@ -352,6 +352,7 @@ func ProcessWebhook(w http.ResponseWriter, r *http.Request, h *WebhookHandler) {
 
 	if err != nil {
 		h.Logger.Error("failed to verify gitlab webhook: ", zap.Error(err))
+		http.Error(w, "unauthorized webhook", http.StatusUnauthorized)
 		return
 	}
 
@@ -370,6 +371,6 @@ func ProcessWebhook(w http.ResponseWriter, r *http.Request, h *WebhookHandler) {
 	case "build":
 		h.HandleJobWebhook(w, payload)
 	default:
-		http.Error(w, "unsupported webhook type", http.StatusBadRequest)
+		http.Error(w, "unsupported webhook type "+base.ObjectKind, http.StatusBadRequest)
 	}
 }

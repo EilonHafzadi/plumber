@@ -7,9 +7,11 @@ import (
 	"net/http/httptest"
 	"plumber/internal/db"
 	"plumber/internal/gitlab"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/iotest"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	gitlabapi "gitlab.com/gitlab-org/api/client-go/v2"
@@ -59,7 +61,7 @@ func TestProcessWebhook_InvalidObjectKind_DoesNotRetry(t *testing.T) {
 		t.Errorf("expected %d but got %d", http.StatusBadRequest, rec.Code)
 	}
 
-	assertNextMessage(t, "unsupported webhook type\n", rec)
+	assertNextMessage(t, "unsupported webhook type push\n", rec)
 }
 
 func TestProcessWebhook_InvalidPayload_DoesNotRetry(t *testing.T) {
@@ -730,10 +732,95 @@ func TestProcessWebhook_OnJobFailure_DeleteJobFails(t *testing.T) {
 	assert.Equal(t, 1, retryCount)
 }
 
-func TestProcessWebhook_Unauthorized_Webhook(t *testing.T) {
-	fixture := newWebhookTestFixture(t)
+// some signing token for example
+const signingToken = "whsec_MzZmYTQ5ZGItZDNhMi00ZjJlLWFkOWYtN2E5YjJjOGQ1ZjFh"
 
-	cfgTemplate := `
+func TestProcessWebhook_Unauthorized_MissingWebhookID(t *testing.T) {
+	assertUnauthorizedWebhook(t, signingToken, "5m", map[string]string{
+		"webhook-timestamp": currentWebhookTimestamp(),
+		"webhook-signature": "v1,invalid",
+	})
+}
+
+func TestProcessWebhook_Unauthorized_MissingWebhookSignature(t *testing.T) {
+	assertUnauthorizedWebhook(t, signingToken, "5m", map[string]string{
+		"webhook-id":        "webhook-id",
+		"webhook-timestamp": currentWebhookTimestamp(),
+	})
+}
+
+func TestProcessWebhook_Unauthorized_MissingWebhookTimestamp(t *testing.T) {
+	assertUnauthorizedWebhook(t, signingToken, "5m", map[string]string{
+		"webhook-id":        "webhook-id",
+		"webhook-signature": "v1,invalid",
+	})
+}
+
+func TestProcessWebhook_Unauthorized_InvalidWebhookTimestamp(t *testing.T) {
+	assertUnauthorizedWebhook(t, signingToken, "5m", map[string]string{
+		"webhook-id":        "webhook-id",
+		"webhook-timestamp": "not-a-timestamp",
+		"webhook-signature": "v1,invalid",
+	})
+}
+
+func TestProcessWebhook_Unauthorized_InvalidMaximumTimestampSkew(t *testing.T) {
+	assertUnauthorizedWebhook(t, signingToken, "not-a-duration", map[string]string{
+		"webhook-id":        "webhook-id",
+		"webhook-timestamp": currentWebhookTimestamp(),
+		"webhook-signature": "v1,invalid",
+	})
+}
+
+func TestProcessWebhook_Unauthorized_TimestampOutsideTolerance(t *testing.T) {
+	assertUnauthorizedWebhook(t, signingToken, "5m", map[string]string{
+		"webhook-id":        "webhook-id",
+		"webhook-timestamp": strconv.FormatInt(time.Now().Add(-time.Hour).Unix(), 10),
+		"webhook-signature": "v1,invalid",
+	})
+}
+
+func TestProcessWebhook_Unauthorized_InvalidSigningTokenEncoding(t *testing.T) {
+	assertUnauthorizedWebhook(t, "whsec_not-base64", "5m", map[string]string{
+		"webhook-id":        "webhook-id",
+		"webhook-timestamp": currentWebhookTimestamp(),
+		"webhook-signature": "v1,invalid",
+	})
+}
+
+func TestProcessWebhook_Unauthorized_SignatureMismatch(t *testing.T) {
+	assertUnauthorizedWebhook(t, signingToken, "5m", map[string]string{
+		"webhook-id":        "webhook-id",
+		"webhook-timestamp": currentWebhookTimestamp(),
+		"webhook-signature": "v1,invalid",
+	})
+}
+
+func assertUnauthorizedWebhook(t *testing.T, token, maxTimestampSkew string, headers map[string]string) {
+	t.Helper()
+
+	fixture := newWebhookTestFixture(t)
+	fixture.setConfig(t, signedWebhookConfig(token, maxTimestampSkew))
+
+	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
+	payload := commentPayload("note", "@plumber", 10)
+	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(payload))
+
+	for name, value := range headers {
+		request.Header.Set(name, value)
+	}
+
+	rec := fixture.sendRequest(client, request)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	assertNextMessage(t, "unauthorized webhook\n", rec)
+}
+
+func currentWebhookTimestamp() string {
+	return strconv.FormatInt(time.Now().Unix(), 10)
+}
+
+func signedWebhookConfig(signingToken, maxTimestampSkew string) string {
+	return fmt.Sprintf(`
 		server_ip = "127.0.0.1"
 		server_port = 8080
 		job_name = "job_test"
@@ -741,16 +828,7 @@ func TestProcessWebhook_Unauthorized_Webhook(t *testing.T) {
 		retry_amount = 3
 		gitlab_instance = "https://gitlab.example.test"
 		access_token = "test-access-token"
-		signing_token = "whsec_MzZmYTQ5ZGItZDNhMi00ZjJlLWFkOWYtN2E5YjJjOGQ1ZjFh"
-		max_timestamp_skew = "5m"
-	`
-
-	fixture.setConfig(t, cfgTemplate)
-
-	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
-	payload := commentPayload("comment", "@plumber", 10)
-	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
-
-	fixture.sendRequest(client, request)
-
+		webhook_signing_token = %q
+		max_timestamp_skew = %q
+	`, signingToken, maxTimestampSkew)
 }
