@@ -9,7 +9,6 @@ COPY . /usr/cmd/plumber
 
 WORKDIR /usr/cmd/plumber
 
-ENV CONFIG_PATH=.
 RUN go build ./cmd/plumber
 
 # ---------- Runtime stage ----------
@@ -25,4 +24,5 @@ WORKDIR /home/container
 COPY --from=build /usr/cmd/plumber/plumber /home/container/plumber
 COPY ./entrypoint.sh /entrypoint.sh
 
+ENV CONFIG_PATH=.
 CMD ["/bin/sh", "/entrypoint.sh"]

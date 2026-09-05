@@ -14,12 +14,14 @@ permissions:
 
 jobs:
   build-and-push:
-    runs-on: alpine-latest
+    runs-on: ubuntu-latest
 
     steps:
       # Step 1: Check out the repository files
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       # Step 2: Set up Docker Buildx for advanced caching features
       - name: Set up Docker Buildx
@@ -51,7 +53,7 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          push: true
+          push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha # Speeds up subsequent runs using GitHub Actions cache
