@@ -1,15 +1,10 @@
 # ---------- Build stage ----------
-FROM alpine:latest AS build
-
-RUN apk add --no-cache \
-    build-base \
-    go
-
-COPY . /usr/cmd/plumber
+FROM golang:latest AS build
 
 WORKDIR /usr/cmd/plumber
+COPY . .
 
-RUN go build ./cmd/plumber
+RUN CGO_ENABLED=0 go build -o /cmd/plumber ./cmd/plumber
 
 # ---------- Runtime stage ----------
 FROM alpine:latest AS runtime
@@ -21,7 +16,7 @@ ENV  USER=container HOME=/home/container
 
 WORKDIR /home/container
 
-COPY --from=build /usr/cmd/plumber/plumber /app/plumber
-COPY ./entrypoint.sh /entrypoint.sh
+COPY --from=build --chown=container:container /cmd/plumber /cmd/plumber
+COPY --chown=container:container ./entrypoint.sh /entrypoint.sh
 
 CMD ["/bin/sh", "/entrypoint.sh"]
