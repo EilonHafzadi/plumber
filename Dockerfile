@@ -1,13 +1,13 @@
 # ---------- Build stage ----------
-FROM golang:latest AS build
+FROM golang:alpine AS build
 
 WORKDIR /usr/cmd/plumber
 COPY . .
 
-RUN CGO_ENABLED=0 go build -o /cmd/plumber ./cmd/plumber
+RUN go build -o /cmd/plumber ./cmd/plumber
 
 # ---------- Runtime stage ----------
-FROM alpine:latest AS runtime
+FROM golang:alpine AS runtime
 
 RUN adduser --disabled-password --home /home/container container
 
