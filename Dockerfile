@@ -1,18 +1,13 @@
 # ---------- Build stage ----------
-FROM alpine:latest AS build
-
-RUN apk add --no-cache \
-    build-base \
-    go
-
-COPY . /usr/cmd/plumber
+FROM golang:1.26-alpine AS build
 
 WORKDIR /usr/cmd/plumber
+COPY . .
 
-RUN go build ./cmd/plumber
+RUN go build -o /cmd/plumber ./cmd/plumber
 
 # ---------- Runtime stage ----------
-FROM alpine:latest AS runtime
+FROM golang:1.26-alpine AS runtime
 
 RUN adduser --disabled-password --home /home/container container
 
@@ -21,7 +16,7 @@ ENV  USER=container HOME=/home/container
 
 WORKDIR /home/container
 
-COPY --from=build /usr/cmd/plumber/plumber /app/plumber
-COPY ./entrypoint.sh /entrypoint.sh
+COPY --from=build --chown=container:container /cmd/plumber /cmd/plumber
+COPY --chown=container:container ./entrypoint.sh /entrypoint.sh
 
 CMD ["/bin/sh", "/entrypoint.sh"]
