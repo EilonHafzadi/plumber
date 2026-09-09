@@ -14,7 +14,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     container:
-      image: golang:latest
+      image: golang:1.26-alpine
 
     steps:
       - name: Install Docker CLI

@@ -1,5 +1,5 @@
 # ---------- Build stage ----------
-FROM golang:alpine AS build
+FROM golang:1.26-alpine AS build
 
 WORKDIR /usr/cmd/plumber
 COPY . .
@@ -7,7 +7,7 @@ COPY . .
 RUN go build -o /cmd/plumber ./cmd/plumber
 
 # ---------- Runtime stage ----------
-FROM golang:alpine AS runtime
+FROM golang:1.26-alpine AS runtime
 
 RUN adduser --disabled-password --home /home/container container
 
