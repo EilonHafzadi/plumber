@@ -1,9 +1,11 @@
 package db
 
-import "database/sql"
+import (
+	"database/sql"
+	"os"
+)
 
-// todo check how headscale do SQL db init
-func NewDatabase(dataSrcName string) (*sql.DB, error) {
+func OpenDatabase(dataSrcName string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", dataSrcName)
 	if err != nil {
 		return nil, err
@@ -12,6 +14,27 @@ func NewDatabase(dataSrcName string) (*sql.DB, error) {
 	db.SetMaxOpenConns(1)
 
 	_, err = db.Exec("CREATE TABLE IF NOT EXISTS running_jobs (key VARCHAR(50) PRIMARY KEY, retry_count INTEGER, merge_request_id INTEGER)")
+	if err != nil {
+		return nil, err
+	}
+
+	return db, nil
+}
+
+// todo check how headscale do SQL db init
+func NewDatabase(dataSrcName string) (*sql.DB, error) {
+	_, err := os.Stat(dataSrcName)
+
+	// db file does not exist
+	if err != nil {
+		_, err := os.Create(dataSrcName)
+		if err != nil {
+			return nil, err
+		}
+
+	}
+
+	db, err := OpenDatabase(dataSrcName)
 	if err != nil {
 		return nil, err
 	}
