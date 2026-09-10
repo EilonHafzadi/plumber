@@ -1,9 +1,11 @@
 # ---------- Build stage ----------
 FROM golang:1.26-alpine AS build
 
-WORKDIR /build
-COPY . .
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
 
+COPY . .
 RUN go build -o /app/plumber ./cmd/plumber
 
 # ---------- Runtime stage ----------
