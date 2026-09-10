@@ -25,7 +25,7 @@ func OpenDatabase(dataSrcName string) (*sql.DB, error) {
 func NewDatabase(dataSrcName string) (*sql.DB, error) {
 	_, err := os.Stat(dataSrcName)
 
-	// db file exists
+	// db file does not exist
 	if err != nil {
 		_, err := os.Create(dataSrcName)
 		if err != nil {
