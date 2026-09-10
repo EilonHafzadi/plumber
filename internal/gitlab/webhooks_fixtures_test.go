@@ -35,7 +35,7 @@ func newWebhookTestFixture(t *testing.T) *WebhookTestFixture {
 		t.Fatal("failed to init logger: " + err.Error())
 	}
 
-	database, err := db.NewDatabase(":memory:")
+	database, err := db.OpenDatabase(":memory:")
 	if err != nil {
 		t.Fatal("failed to init database: " + err.Error())
 	}

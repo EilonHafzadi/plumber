@@ -7,7 +7,7 @@ import (
 
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	database, err := NewDatabase(":memory:")
+	database, err := OpenDatabase(":memory:")
 	if err != nil {
 		t.Fatal("failed to init database: " + err.Error())
 	}

@@ -5,6 +5,22 @@ import (
 	"os"
 )
 
+func OpenDatabase(dataSrcName string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite3", dataSrcName)
+	if err != nil {
+		return nil, err
+	}
+
+	db.SetMaxOpenConns(1)
+
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS running_jobs (key VARCHAR(50) PRIMARY KEY, retry_count INTEGER, merge_request_id INTEGER)")
+	if err != nil {
+		return nil, err
+	}
+
+	return db, nil
+}
+
 // todo check how headscale do SQL db init
 func NewDatabase(dataSrcName string) (*sql.DB, error) {
 	_, err := os.Stat(dataSrcName)
@@ -18,14 +34,7 @@ func NewDatabase(dataSrcName string) (*sql.DB, error) {
 
 	}
 
-	db, err := sql.Open("sqlite3", dataSrcName)
-	if err != nil {
-		return nil, err
-	}
-
-	db.SetMaxOpenConns(1)
-
-	_, err = db.Exec("CREATE TABLE IF NOT EXISTS running_jobs (key VARCHAR(50) PRIMARY KEY, retry_count INTEGER, merge_request_id INTEGER)")
+	db, err := OpenDatabase(dataSrcName)
 	if err != nil {
 		return nil, err
 	}
