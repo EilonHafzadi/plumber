@@ -1,9 +1,23 @@
 package db
 
-import "database/sql"
+import (
+	"database/sql"
+	"os"
+)
 
 // todo check how headscale do SQL db init
 func NewDatabase(dataSrcName string) (*sql.DB, error) {
+	_, err := os.Stat(dataSrcName)
+
+	// db file exists
+	if err != nil {
+		_, err := os.Create(dataSrcName)
+		if err != nil {
+			return nil, err
+		}
+
+	}
+
 	db, err := sql.Open("sqlite3", dataSrcName)
 	if err != nil {
 		return nil, err

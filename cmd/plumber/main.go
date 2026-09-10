@@ -42,7 +42,7 @@ func main() {
 
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
-		logger.Fatal("CONFIG_PATH environment variable is not set")
+		configPath = "."
 	}
 
 	cfg, err := config.NewConfig(configPath)
@@ -57,7 +57,12 @@ func main() {
 		logger.Fatal("failed to initialize gitlab client", zap.Error(err))
 	}
 
-	database, err := db.NewDatabase("./plumber.db")
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "plumber.db"
+	}
+
+	database, err := db.NewDatabase(dbPath)
 	if err != nil {
 		logger.Fatal("failed to initialize database", zap.Error(err))
 	}
