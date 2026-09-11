@@ -16,6 +16,8 @@ RUN go build -o /app/plumber ./cmd/plumber
 # ---------- Runtime stage ----------
 FROM alpine:3.24 AS runtime
 
+RUN apk add --no-cache ca-certificates
+
 RUN adduser --disabled-password --home /home/container container
 
 USER container
