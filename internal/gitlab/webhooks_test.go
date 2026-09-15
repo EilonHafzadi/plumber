@@ -38,12 +38,12 @@ func TestBotMention_ExactMatch_Triggers(t *testing.T) {
 		RetryJob(83, int64(1)).
 		Return(&gitlabapi.Job{ID: 1}, &gitlabapi.Response{}, nil)
 
-	payload := commentPayload("note", fmt.Sprintf("@%s retry", fixture.Cfg.RetryCommand), 1)
+	payload := commentPayload("note", fmt.Sprintf("%s retry", fixture.Cfg.RetryCommand), 1)
 	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(payload))
 
 	rec := fixture.sendRequest(client, request)
 	if rec.Code != http.StatusCreated {
-		t.Errorf("expected %d but got %d", http.StatusOK, rec.Code)
+		t.Errorf("expected %d but got %d", http.StatusCreated, rec.Code)
 	}
 
 }
@@ -160,7 +160,7 @@ func TestProcessWebhook_ListPipelineJobs_Fails_DoesNotRetry(t *testing.T) {
 		ListPipelineJobs(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, notFoundResp, errors.New("404 Not Found"))
 
-	payload := commentPayload("note", fmt.Sprintf("@%s retry", fixture.Cfg.RetryCommand), 1)
+	payload := commentPayload("note", fmt.Sprintf("%s retry", fixture.Cfg.RetryCommand), 1)
 	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(payload))
 
 	rec := fixture.sendRequest(client, request)
@@ -186,7 +186,7 @@ func TestProcessWebhook_GetJobId_ReturnsEmpty_DoesNotRetry(t *testing.T) {
 		ListPipelineJobs(83, int64(1), opts).
 		Return([]*gitlabapi.Job{}, &gitlabapi.Response{}, nil)
 
-	payload := commentPayload("note", fmt.Sprintf("@%s retry", fixture.Cfg.RetryCommand), 1)
+	payload := commentPayload("note", fmt.Sprintf("%s retry", fixture.Cfg.RetryCommand), 1)
 	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(payload))
 
 	rec := fixture.sendRequest(client, request)
@@ -212,7 +212,7 @@ func TestProcessWebhook_GetJobId_FailsJobNotFound_DoesNotRetry(t *testing.T) {
 		ListPipelineJobs(83, int64(1), opts).
 		Return([]*gitlabapi.Job{{ID: 2, Name: "other_job"}}, &gitlabapi.Response{}, nil)
 
-	payload := commentPayload("note", fmt.Sprintf("@%s retry", fixture.Cfg.RetryCommand), 1)
+	payload := commentPayload("note", fmt.Sprintf("%s retry", fixture.Cfg.RetryCommand), 1)
 	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(payload))
 
 	rec := fixture.sendRequest(client, request)
@@ -242,7 +242,7 @@ func TestProcessWebhook_RetryJob_Fails_DoesNotRetry(t *testing.T) {
 		RetryJob(gomock.Any(), gomock.Any()).
 		Return(nil, &gitlabapi.Response{}, errors.New("oh no rip"))
 
-	payload := commentPayload("note", fmt.Sprintf("@%s retry", fixture.Cfg.RetryCommand), 1)
+	payload := commentPayload("note", fmt.Sprintf("%s retry", fixture.Cfg.RetryCommand), 1)
 	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(payload))
 
 	rec := fixture.sendRequest(client, request)
@@ -530,6 +530,45 @@ func TestProcessWebhook_Build_Failed_UnapproveMergeRequestFails_NoStateChange(t 
 	assert.True(t, db.IsRunningJob(fixture.Database, jobKey))
 }
 
+func TestWebhookHandler_GetRetryGoal_UsesExplicitCommentValue(t *testing.T) {
+	fixture := newWebhookTestFixture(t)
+	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
+	handler := fixture.handler(client)
+
+	assert.Equal(t, 5, handler.GetRetryGoal(fmt.Sprintf("%s 5", fixture.Cfg.RetryCommand)))
+	assert.Equal(t, fixture.Cfg.RetryAmount, handler.GetRetryGoal(fixture.Cfg.RetryCommand))
+}
+
+func TestProcessWebhook_OnRetryCommand_CustomRetryGoal_StoresGoal(t *testing.T) {
+	fixture := newWebhookTestFixture(t)
+	jobKey := buildJobKey(83, 1, fixture.Cfg.JobName)
+
+	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
+
+	opts := &gitlabapi.ListJobsOptions{
+		ListOptions: gitlabapi.ListOptions{
+			PerPage: 100,
+		},
+	}
+
+	client.MockJobs.EXPECT().ListPipelineJobs(83, int64(1), opts).
+		Return([]*gitlabapi.Job{{ID: 1, Name: fixture.Cfg.JobName}}, &gitlabapi.Response{}, nil)
+
+	client.MockJobs.EXPECT().
+		RetryJob(83, int64(1)).
+		Return(&gitlabapi.Job{ID: 1}, &gitlabapi.Response{}, nil)
+
+	payload := commentPayload("note", fmt.Sprintf("%s 5", fixture.Cfg.RetryCommand), 1)
+	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
+
+	rec := fixture.sendRequest(client, request)
+	assert.Equal(t, http.StatusCreated, rec.Code)
+
+	retryGoal, err := db.GetRetryGoal(fixture.Database, jobKey)
+	assert.NoError(t, err)
+	assert.Equal(t, 5, retryGoal)
+}
+
 func TestProcessWebhook_OnRetryCommand_isRunningJob_ReturnsFalse(t *testing.T) {
 	fixture := newWebhookTestFixture(t)
 	jobKey := buildJobKey(83, 10, fixture.Cfg.JobName)
@@ -549,7 +588,7 @@ func TestProcessWebhook_OnRetryCommand_isRunningJob_ReturnsFalse(t *testing.T) {
 		RetryJob(83, int64(1)).
 		Return(&gitlabapi.Job{ID: 1}, &gitlabapi.Response{}, nil)
 
-	payload := commentPayload("note", fmt.Sprintf("@%s", fixture.Cfg.RetryCommand), 10)
+	payload := commentPayload("note", fmt.Sprintf("%s", fixture.Cfg.RetryCommand), 10)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 
 	assert.False(t, db.IsRunningJob(fixture.Database, jobKey))
@@ -575,7 +614,7 @@ func TestProcessWebhook_OnRetryCommand_isRunningJob_ReturnsTrue(t *testing.T) {
 	client.MockJobs.EXPECT().ListPipelineJobs(83, int64(10), opts).
 		Return([]*gitlabapi.Job{{ID: 1, Name: fixture.Cfg.JobName}}, &gitlabapi.Response{}, nil)
 
-	payload := commentPayload("note", fmt.Sprintf("@%s", fixture.Cfg.RetryCommand), 10)
+	payload := commentPayload("note", fmt.Sprintf("%s", fixture.Cfg.RetryCommand), 10)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 
 	// before requesting a retry we ensure this job is already running
@@ -606,7 +645,7 @@ func TestProcessWebhook_OnRetryCommand_InsertFails(t *testing.T) {
 		RetryJob(83, int64(1)).
 		Return(&gitlabapi.Job{ID: 1}, &gitlabapi.Response{}, nil)
 
-	payload := commentPayload("note", fmt.Sprintf("@%s retry", fixture.Cfg.RetryCommand), 1)
+	payload := commentPayload("note", fmt.Sprintf("%s retry", fixture.Cfg.RetryCommand), 1)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := fixture.sendRequest(client, request)
 
