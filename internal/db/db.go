@@ -2,8 +2,16 @@ package db
 
 import (
 	"database/sql"
+	"embed"
 	"os"
+
+	"context"
+
+	"github.com/pressly/goose/v3"
 )
+
+//go:embed migrations
+var embedMigrations embed.FS
 
 func OpenDatabase(dataSrcName string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", dataSrcName)
@@ -14,6 +22,18 @@ func OpenDatabase(dataSrcName string) (*sql.DB, error) {
 	db.SetMaxOpenConns(1)
 
 	_, err = db.Exec("CREATE TABLE IF NOT EXISTS running_jobs (key VARCHAR(50) PRIMARY KEY, retry_count INTEGER, merge_request_id INTEGER)")
+	if err != nil {
+		return nil, err
+	}
+
+	goose.SetBaseFS(embedMigrations)
+
+	err = goose.SetDialect("sqlite3")
+	if err != nil {
+		return nil, err
+	}
+
+	err = goose.UpContext(context.Background(), db, "migrations")
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +94,17 @@ func GetRetryCount(db *sql.DB, jobKey string) (int, error) {
 	}
 
 	return retryCount, nil
+}
+
+func GetRetryGoal(db *sql.DB, jobKey string) (int, error) {
+	var retryGoal int
+	err := db.QueryRow("SELECT retry_goal FROM running_jobs WHERE key = ?", jobKey).Scan(&retryGoal)
+
+	if err != nil {
+		return -1, err
+	}
+
+	return retryGoal, nil
 }
 
 func GetMergeRequestIid(db *sql.DB, jobKey string) (int64, error) {
