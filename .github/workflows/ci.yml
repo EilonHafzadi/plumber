@@ -11,10 +11,15 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: golang:1.26
+    env:
+      GOFLAGS: -buildvcs=false
 
     steps:
       - name: Check out code
         uses: actions/checkout@v4
+
+      - name: Mark repo safe for Git
+        run: git config --global --add safe.directory '*'
 
       - name: Build plumber
         run: go build ./...
