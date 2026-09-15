@@ -144,6 +144,25 @@ func TestGetRetryCount_JobDoesNotExist(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestGetRetryGoal_ReturnsStoredValue(t *testing.T) {
+	beforeEach(t)
+	insertRunningJob(t, database, "job_key", 1, 42)
+
+	_, err := database.Exec("UPDATE running_jobs SET retry_goal = ? WHERE key = ?", 5, "job_key")
+	assert.NoError(t, err)
+
+	retryGoal, err := GetRetryGoal(database, "job_key")
+	assert.NoError(t, err)
+	assert.Equal(t, 5, retryGoal)
+}
+
+func TestGetRetryGoal_JobDoesNotExist(t *testing.T) {
+	beforeEach(t)
+
+	_, err := GetRetryGoal(database, "missing_key")
+	assert.Error(t, err)
+}
+
 func TestGetMergeRequestIid_ReturnsStoredValue(t *testing.T) {
 	beforeEach(t)
 	insertRunningJob(t, database, "job_key", 1, 99)
