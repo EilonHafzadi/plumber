@@ -111,6 +111,10 @@ func (h *WebhookHandler) GetRetryGoal(note string) int {
 	   if err != nil {
 		   continue
 	   }
+
+	   if retryGoal <= 0 {
+		 continue
+	   }
 	   
 	   return retryGoal 
   	}
@@ -229,14 +233,15 @@ func (h *WebhookHandler) OnJobFinished(jobWebhook *JobWebhook, mergeRequestIid i
 	jobName := jobWebhook.Name
 	jobKey := fmt.Sprintf("%d_%d_%s", jobWebhook.ProjectId, jobWebhook.PipelineId, jobName)
 
-	err := db.DeleteJob(h.Database, jobKey)
-	if err != nil {
-		h.Logger.Error("failed to delete job from running jobs", zap.String("job_name", jobName), zap.Error(err))
-		return
-	}
-
 	// We don't approve MR when the specified amount is less than the original
 	if retryGoal < h.Cfg.RetryAmount {
+		err := db.DeleteJob(h.Database, jobKey)
+		if err != nil {
+			h.Logger.Error("failed to delete job from running jobs", zap.String("job_name", jobName), zap.Error(err))
+			return
+		}
+
+		h.Logger.Info("quality gate passed", zap.Int("merge_request", int(mergeRequestIid)))
 		return
 	}
 
@@ -250,6 +255,11 @@ func (h *WebhookHandler) OnJobFinished(jobWebhook *JobWebhook, mergeRequestIid i
 		h.Logger.Info("quality gate passed, merge request approved", zap.Int64("merge_request", mergeRequestIid))
 	} else {
 		h.Logger.Info("quality gate passed, merge request is already approved", zap.Int64("merge_request", mergeRequestIid))
+	}
+
+	err = db.DeleteJob(h.Database, jobKey)
+	if err != nil {
+		h.Logger.Error("failed to delete job from running jobs", zap.String("job_name", jobName), zap.Error(err))	
 	}
 
 }
