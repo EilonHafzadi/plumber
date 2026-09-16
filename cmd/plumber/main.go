@@ -83,13 +83,21 @@ func main() {
 		})
 	})
 
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Type", "application/json")
+		
+		response := `{"status": "UP"}`
+		w.Write([]byte(response))
+	})
+
 	serverAddress := fmt.Sprintf("%s:%d", cfg.ServerIP, cfg.ServerPort)
 	logger.Info("plumber started on", zap.String("address", serverAddress))
 
 	err = http.ListenAndServe(serverAddress, nil)
 
 	if err != nil {
-		logger.Fatal("failed to start http plumber", zap.Error(err))
+		logger.Fatal("failed to start plumber:", zap.Error(err))
 	}
 
 }
