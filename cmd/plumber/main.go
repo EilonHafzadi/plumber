@@ -84,11 +84,8 @@ func main() {
 	})
 
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "application/json")
-		
-		response := `{"status": "UP"}`
-		w.Write([]byte(response))
+		w.Write([]byte(`{"status": "UP"}`))
 	})
 
 	serverAddress := fmt.Sprintf("%s:%d", cfg.ServerIP, cfg.ServerPort)
