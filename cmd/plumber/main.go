@@ -94,7 +94,7 @@ func main() {
 	err = http.ListenAndServe(serverAddress, nil)
 
 	if err != nil {
-		logger.Fatal("failed to start plumber:", zap.Error(err))
+		logger.Fatal("failed to start plumber", zap.Error(err))
 	}
 
 }
