@@ -107,3 +107,31 @@ func UnapproveMergeRequest(gitlabClient *gitlab.Client, jobWebhook *JobWebhook, 
 
 	return true, nil
 }
+
+func ReplyToDiscussion(gitlabClient *gitlab.Client, discussionId string, projectId int, mergeRequestIID int64, note string) (int64, error) {
+	opt := &gitlab.AddMergeRequestDiscussionNoteOptions{
+		Body: new(note),
+	}
+
+	createdNote, _, err := gitlabClient.Discussions.AddMergeRequestDiscussionNote(projectId, mergeRequestIID, discussionId, opt)
+
+	if err != nil {
+		return -1, err
+	}
+
+	return createdNote.ID, nil
+}
+
+func UpdateDiscussionReplyNote(gitlabClient *gitlab.Client, projectId int, mergeRequestIID int64, discussionId string, note string, originalNote int64) error {
+	opt := &gitlab.UpdateMergeRequestDiscussionNoteOptions{
+		Body: gitlab.Ptr(note),
+	}
+
+	_, _, err := gitlabClient.Discussions.UpdateMergeRequestDiscussionNote(projectId, mergeRequestIID, discussionId, originalNote, opt)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

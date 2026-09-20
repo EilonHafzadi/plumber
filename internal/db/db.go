@@ -21,7 +21,7 @@ func OpenDatabase(dataSrcName string) (*sql.DB, error) {
 
 	db.SetMaxOpenConns(1)
 
-	_, err = db.Exec("CREATE TABLE IF NOT EXISTS running_jobs (key VARCHAR(50) PRIMARY KEY, retry_count INTEGER, merge_request_id INTEGER)")
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS running_jobs (key VARCHAR(50) PRIMARY KEY, retry_count INTEGER, merge_request_id INTEGER, retry_goal INTEGER, discussion_id TEXT, note_id BIGINT)")
 	if err != nil {
 		return nil, err
 	}
@@ -116,4 +116,26 @@ func GetMergeRequestIid(db *sql.DB, jobKey string) (int64, error) {
 	}
 
 	return mergeRequestId, nil
+}
+
+func GetDiscussionId(db *sql.DB, jobKey string) (string, error) {
+	var discussionId string
+	err := db.QueryRow("SELECT discussion_id FROM running_jobs WHERE key = ?", jobKey).Scan(&discussionId)
+	
+	if err != nil {
+		return "", err
+	}
+
+	return discussionId, nil
+}
+
+func GetNoteId(db *sql.DB, jobKey string) (int64, error) {
+	var noteId int64
+	err := db.QueryRow("SELECT note_id FROM running_jobs WHERE key = ?", jobKey).Scan(&noteId)
+
+	if err != nil {
+		return -1, err
+	}
+
+	return noteId, nil
 }

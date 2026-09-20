@@ -32,11 +32,13 @@ type CommentWebhook struct {
 	ObjectAttributes struct {
 		Note         string `json:"note"`
 		NoteableType string `json:"noteable_type"`
+		DiscussionId string `json:"discussion_id"`
+		Id           int64  `json:"id"`
 	} `json:"object_attributes"`
 
 	MergeRequest struct {
-		HeadPipelineId int `json:"head_pipeline_id"`
-		Iid            int `json:"iid"`
+		HeadPipelineId int   `json:"head_pipeline_id"`
+		Iid            int64 `json:"iid"`
 	} `json:"merge_request"`
 }
 
@@ -87,15 +89,33 @@ func (h *WebhookHandler) OnRetryCommand(gitlabClient *gitlab.Client, w http.Resp
 		return
 	}
 
+	discussionId := commentWebhook.ObjectAttributes.DiscussionId
+	replyNote := fmt.Sprintf("Retrying Job %s Count: 1", h.Cfg.JobName)
+
+	noteId, err := ReplyToDiscussion(gitlabClient, discussionId, commentWebhook.ProjectId, commentWebhook.MergeRequest.Iid, replyNote)
+
+	if err != nil {
+		h.Logger.Error("failed to reply to MR comment", zap.Error(err))
+		http.Error(w, "failed to reply to MR comment:"+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	// otherwise insert it into db
-	_, err = h.Database.Exec("INSERT INTO running_jobs (key, retry_count, merge_request_id, retry_goal) VALUES (?, 1, ?, ?)", jobKey, commentWebhook.MergeRequest.Iid, retryGoal)
+	_, err = h.Database.Exec("INSERT INTO running_jobs (key, retry_count, merge_request_id, retry_goal, discussion_id, note_id) VALUES (?, 1, ?, ?, ?, ?)",
+		jobKey,
+		commentWebhook.MergeRequest.Iid,
+		retryGoal,
+		discussionId,
+		noteId,
+	)
+
 	if err != nil {
 		h.Logger.Error("failed to insert job to running jobs", zap.String("job_name", h.Cfg.JobName), zap.Error(err))
 		return
 	}
 
 	h.Logger.Info("retrying job of merge request",
-		zap.Int("merge_request", commentWebhook.MergeRequest.Iid),
+		zap.Int64("merge_request", commentWebhook.MergeRequest.Iid),
 		zap.String("job_name", h.Cfg.JobName),
 		zap.Int("retry_count", 1),
 	)
@@ -106,18 +126,18 @@ func (h *WebhookHandler) OnRetryCommand(gitlabClient *gitlab.Client, w http.Resp
 func (h *WebhookHandler) GetRetryGoal(note string) int {
 	args := strings.Fields(note)
 
-	for _, arg := range args {	
-	   retryGoal, err := strconv.Atoi(arg)
-	   if err != nil {
-		   continue
-	   }
+	for _, arg := range args {
+		retryGoal, err := strconv.Atoi(arg)
+		if err != nil {
+			continue
+		}
 
-	   if retryGoal <= 0 {
-		 continue
-	   }
-	   
-	   return retryGoal 
-  	}
+		if retryGoal <= 0 {
+			continue
+		}
+
+		return retryGoal
+	}
 
 	return h.Cfg.RetryAmount
 }
@@ -204,7 +224,7 @@ func (h *WebhookHandler) OnJobInProgress(jobWebhook *JobWebhook, jobKey string, 
 	}
 
 	if !reserved {
-		h.Logger.Warn("retry limit already reached", zap.String("job_name", jobName))
+		h.Logger.Warn("retry goal already reached", zap.String("job_name", jobName))
 		return
 	}
 
@@ -226,6 +246,25 @@ func (h *WebhookHandler) OnJobInProgress(jobWebhook *JobWebhook, jobKey string, 
 		zap.String("job_name", h.Cfg.JobName),
 		zap.Int("retry_count", retryCount+1),
 	)
+
+	discussionId, err := db.GetDiscussionId(h.Database, jobKey)
+	if err != nil {
+		h.Logger.Error("failed to get discussion id", zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
+		return
+	}
+
+	originalNote, err := db.GetNoteId(h.Database, jobKey)
+	if err != nil {
+		h.Logger.Error("failed to get note id", zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
+		return
+	}
+
+	note := fmt.Sprintf("Retrying Job %s Count: %d", jobName, retryCount+1)
+
+	err = UpdateDiscussionReplyNote(h.Client, jobWebhook.ProjectId, mergeRequestIid, discussionId, note, originalNote)
+	if err != nil {
+		h.Logger.Error("failed to update discussion reply note", zap.Error(err))
+	}
 
 }
 
@@ -251,15 +290,29 @@ func (h *WebhookHandler) OnJobFinished(jobWebhook *JobWebhook, mergeRequestIid i
 		return
 	}
 
+	discussionId, err := db.GetDiscussionId(h.Database, jobKey)
+	if err != nil {
+		h.Logger.Error("failed to get discussion id", zap.Error(err))
+		return
+	}
+
+	originalNote, err := db.GetNoteId(h.Database, jobKey)
+	if err != nil {
+		h.Logger.Error("failed to get note id", zap.Error(err))
+		return
+	}
+
 	if approved {
 		h.Logger.Info("quality gate passed, merge request approved", zap.Int64("merge_request", mergeRequestIid))
+		UpdateDiscussionReplyNote(h.Client, jobWebhook.ProjectId, mergeRequestIid, discussionId, "Quality Gate Passed. MR approved.", originalNote)
 	} else {
 		h.Logger.Info("quality gate passed, merge request is already approved", zap.Int64("merge_request", mergeRequestIid))
+		UpdateDiscussionReplyNote(h.Client, jobWebhook.ProjectId, mergeRequestIid, discussionId, "Quality Gate Passed.", originalNote)
 	}
 
 	err = db.DeleteJob(h.Database, jobKey)
 	if err != nil {
-		h.Logger.Error("failed to delete job from running jobs", zap.String("job_name", jobName), zap.Error(err))	
+		h.Logger.Error("failed to delete job from running jobs", zap.String("job_name", jobName), zap.Error(err))
 	}
 
 }
@@ -282,10 +335,24 @@ func (h *WebhookHandler) OnJobFailure(jobWebhook *JobWebhook, mergeRequestIid in
 		return
 	}
 
+	discussionId, err := db.GetDiscussionId(h.Database, jobKey)
+	if err != nil {
+		h.Logger.Error("failed to get discussion id", zap.Error(err))
+		return
+	}
+
+	originalNote, err := db.GetNoteId(h.Database, jobKey)
+	if err != nil {
+		h.Logger.Error("failed to get note id", zap.Error(err))
+		return
+	}
+
 	if unapproved {
 		h.Logger.Error("quality gate failed, merge request unapproved", zap.String("job_name", jobName), zap.Int("retry_count", retryCount))
+		UpdateDiscussionReplyNote(h.Client, jobWebhook.ProjectId, mergeRequestIid, discussionId, "Quality Gate Failed. MR unapproved.", originalNote)
 	} else {
-		h.Logger.Error("quality gate failed, job is already unapproved", zap.String("job_name", jobName), zap.Int("retry_count", retryCount))
+		h.Logger.Error("quality gate failed, merge request is already unapproved", zap.String("job_name", jobName), zap.Int("retry_count", retryCount))
+		UpdateDiscussionReplyNote(h.Client, jobWebhook.ProjectId, mergeRequestIid, discussionId, "Quality Gate Failed.", originalNote)
 	}
 
 }
@@ -329,7 +396,6 @@ func (h *WebhookHandler) HandleJobWebhook(w http.ResponseWriter, body []byte) {
 		h.Logger.Error("failed to get job retry goal", zap.String("job_name", jobName), zap.Error(err))
 		return
 	}
-	
 
 	if jobWebhook.Status == "success" && retryCount >= retryGoal {
 		h.OnJobFinished(&jobWebhook, mergeRequestIid, retryGoal)
