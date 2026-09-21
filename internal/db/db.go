@@ -21,7 +21,7 @@ func OpenDatabase(dataSrcName string) (*sql.DB, error) {
 
 	db.SetMaxOpenConns(1)
 
-	_, err = db.Exec("CREATE TABLE IF NOT EXISTS running_jobs (key VARCHAR(50) PRIMARY KEY, retry_count INTEGER, merge_request_id INTEGER, retry_goal INTEGER, discussion_id TEXT, note_id BIGINT)")
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS running_jobs (key VARCHAR(50) PRIMARY KEY, retry_count INTEGER, merge_request_id INTEGER)")
 	if err != nil {
 		return nil, err
 	}
