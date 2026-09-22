@@ -203,7 +203,7 @@ func (h *WebhookHandler) DecrementRetryCount(jobKey string) (bool, error) {
 	return rowsAffected == 1, nil
 }
 
-func (h *WebhookHandler) OnJobInProgress(jobWebhook *JobWebhook, jobKey string, retryCount int) {
+func (h *WebhookHandler) OnJobInProgress(jobWebhook *JobWebhook, jobKey string, retryCount int, discussionId string, originalNote int64) {
 	jobName := jobWebhook.Name
 
 	mergeRequestIid, err := db.GetMergeRequestIid(h.Database, jobKey)
@@ -247,18 +247,6 @@ func (h *WebhookHandler) OnJobInProgress(jobWebhook *JobWebhook, jobKey string, 
 		zap.Int("retry_count", retryCount+1),
 	)
 
-	discussionId, err := db.GetDiscussionId(h.Database, jobKey)
-	if err != nil {
-		h.Logger.Error("failed to get discussion id", zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
-		return
-	}
-
-	originalNote, err := db.GetNoteId(h.Database, jobKey)
-	if err != nil {
-		h.Logger.Error("failed to get note id", zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
-		return
-	}
-
 	note := fmt.Sprintf("Retrying Job %s Count: %d", jobName, retryCount+1)
 
 	err = UpdateDiscussionReplyNote(h.Client, jobWebhook.ProjectId, mergeRequestIid, discussionId, note, originalNote)
@@ -268,7 +256,7 @@ func (h *WebhookHandler) OnJobInProgress(jobWebhook *JobWebhook, jobKey string, 
 
 }
 
-func (h *WebhookHandler) OnJobFinished(jobWebhook *JobWebhook, mergeRequestIid int64, retryGoal int) {
+func (h *WebhookHandler) OnJobFinished(jobWebhook *JobWebhook, mergeRequestIid int64, retryGoal int, discussionId string, originalNote int64) {
 	jobName := jobWebhook.Name
 	jobKey := fmt.Sprintf("%d_%d_%s", jobWebhook.ProjectId, jobWebhook.PipelineId, jobName)
 
@@ -287,18 +275,6 @@ func (h *WebhookHandler) OnJobFinished(jobWebhook *JobWebhook, mergeRequestIid i
 	approved, err := ApproveMergeRequest(h.Client, jobWebhook, mergeRequestIid)
 	if err != nil {
 		h.Logger.Error("failed to approve merge request", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
-		return
-	}
-
-	discussionId, err := db.GetDiscussionId(h.Database, jobKey)
-	if err != nil {
-		h.Logger.Error("failed to get discussion id", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
-		return
-	}
-
-	originalNote, err := db.GetNoteId(h.Database, jobKey)
-	if err != nil {
-		h.Logger.Error("failed to get note id", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
 		return
 	}
 
@@ -325,7 +301,7 @@ func (h *WebhookHandler) OnJobFinished(jobWebhook *JobWebhook, mergeRequestIid i
 
 }
 
-func (h *WebhookHandler) OnJobFailure(jobWebhook *JobWebhook, mergeRequestIid int64, retryCount int) {
+func (h *WebhookHandler) OnJobFailure(jobWebhook *JobWebhook, mergeRequestIid int64, retryCount int, discussionId string, originalNote int64) {
 	jobKey := fmt.Sprintf("%d_%d_%s", jobWebhook.ProjectId, jobWebhook.PipelineId, h.Cfg.JobName)
 
 	unapproved, err := UnapproveMergeRequest(h.Client, jobWebhook, mergeRequestIid)
@@ -333,18 +309,6 @@ func (h *WebhookHandler) OnJobFailure(jobWebhook *JobWebhook, mergeRequestIid in
 
 	if err != nil {
 		h.Logger.Error("failed to unapprove merge request", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid), zap.Int("retry_count", retryCount), zap.Error(err))
-		return
-	}
-
-	discussionId, err := db.GetDiscussionId(h.Database, jobKey)
-	if err != nil {
-		h.Logger.Error("failed to get discussion id", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
-		return
-	}
-
-	originalNote, err := db.GetNoteId(h.Database, jobKey)
-	if err != nil {
-		h.Logger.Error("failed to get note id", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
 		return
 	}
 
@@ -412,12 +376,24 @@ func (h *WebhookHandler) HandleJobWebhook(w http.ResponseWriter, body []byte) {
 		return
 	}
 
+	discussionId, err := db.GetDiscussionId(h.Database, jobKey)
+	if err != nil {
+		h.Logger.Error("failed to get discussion id", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
+		return
+	}
+
+	originalNote, err := db.GetNoteId(h.Database, jobKey)
+	if err != nil {
+		h.Logger.Error("failed to get note id", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
+		return
+	}
+
 	if jobWebhook.Status == "success" && retryCount >= retryGoal {
-		h.OnJobFinished(&jobWebhook, mergeRequestIid, retryGoal)
+		h.OnJobFinished(&jobWebhook, mergeRequestIid, retryGoal, discussionId, originalNote)
 	} else if jobWebhook.Status == "success" && retryCount < retryGoal {
-		h.OnJobInProgress(&jobWebhook, jobKey, retryCount)
+		h.OnJobInProgress(&jobWebhook, jobKey, retryCount, discussionId, originalNote)
 	} else if jobWebhook.Status == "failed" {
-		h.OnJobFailure(&jobWebhook, mergeRequestIid, retryCount)
+		h.OnJobFailure(&jobWebhook, mergeRequestIid, retryCount, discussionId, originalNote)
 	}
 
 }
