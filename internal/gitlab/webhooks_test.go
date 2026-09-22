@@ -259,6 +259,40 @@ func TestProcessWebhook_RetryJob_Fails_DoesNotRetry(t *testing.T) {
 	}
 
 	assertNextMessage(t, "failed to retry job: oh no rip\n", rec)
+	assert.True(t, db.IsRunningJob(fixture.Database, buildJobKey(83, 1, fixture.Cfg.JobName)))
+}
+
+func TestProcessWebhook_ReplyFailure_PreservesClaimAndPreventsDuplicateSideEffects(t *testing.T) {
+	fixture := newWebhookTestFixture(t)
+	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
+	opts := &gitlabapi.ListJobsOptions{ListOptions: gitlabapi.ListOptions{PerPage: 100}}
+
+	client.MockJobs.EXPECT().
+		ListPipelineJobs(83, int64(1), opts).
+		Return([]*gitlabapi.Job{{ID: 1, Name: fixture.Cfg.JobName}}, &gitlabapi.Response{}, nil).
+		Times(2)
+
+	client.MockJobs.EXPECT().
+		RetryJob(83, int64(1)).
+		Return(&gitlabapi.Job{ID: 1}, &gitlabapi.Response{}, nil)
+
+	client.MockDiscussions.EXPECT().
+		AddMergeRequestDiscussionNote(83, int64(1), "1", &gitlabapi.AddMergeRequestDiscussionNoteOptions{
+			Body: new("Retrying Job job_test Count: 1"),
+		}).
+		Return(nil, &gitlabapi.Response{}, errors.New("discussion unavailable"))
+
+	payload := commentPayload("note", fmt.Sprintf("%s retry", fixture.Cfg.RetryCommand), "1", 1, 1)
+	request := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(payload))
+	rec := fixture.sendRequest(client, request)
+
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.True(t, db.IsRunningJob(fixture.Database, buildJobKey(83, 1, fixture.Cfg.JobName)))
+
+	request = httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(payload))
+	rec = fixture.sendRequest(client, request)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
 func TestProcessWebhook_Build_InvalidJson_DoesNotProcess(t *testing.T) {
@@ -692,21 +726,11 @@ func TestProcessWebhook_OnRetryCommand_InsertFails(t *testing.T) {
 		ListPipelineJobs(83, int64(1), opts).
 		Return([]*gitlabapi.Job{{ID: 1, Name: fixture.Cfg.JobName}}, &gitlabapi.Response{}, nil)
 
-	client.MockJobs.EXPECT().
-		RetryJob(83, int64(1)).
-		Return(&gitlabapi.Job{ID: 1}, &gitlabapi.Response{}, nil)
-
-	client.MockDiscussions.EXPECT().
-		AddMergeRequestDiscussionNote(83, int64(1), "1", &gitlabapi.AddMergeRequestDiscussionNoteOptions{
-			Body: new("Retrying Job job_test Count: 1"),
-		}).
-		Return(&gitlabapi.Note{ID: 123}, &gitlabapi.Response{}, nil)
-
 	payload := commentPayload("note", fmt.Sprintf("%s retry", fixture.Cfg.RetryCommand), "1", 1, 1)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := fixture.sendRequest(client, request)
 
-	assert.Equal(t, 200, rec.Code)
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
 
 	jobKey := fmt.Sprintf("%d_%d_%s", 83, 1, fixture.Cfg.JobName)
 	assert.Equal(t, 0, countRunningJobs(t, fixture.Database, jobKey))

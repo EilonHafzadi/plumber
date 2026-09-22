@@ -75,6 +75,11 @@ func IsRunningJob(db *sql.DB, jobKey string) bool {
 	return exists
 }
 
+func SetNoteID(db *sql.DB, jobKey string, noteID int64) error {
+	_, err := db.Exec("UPDATE running_jobs SET note_id = ? WHERE key = ?", noteID, jobKey)
+	return err
+}
+
 func DeleteJob(db *sql.DB, jobKey string) error {
 	_, err := db.Exec("DELETE FROM running_jobs WHERE key = ?", jobKey)
 
@@ -121,7 +126,7 @@ func GetMergeRequestIid(db *sql.DB, jobKey string) (int64, error) {
 func GetDiscussionId(db *sql.DB, jobKey string) (string, error) {
 	var discussionId string
 	err := db.QueryRow("SELECT discussion_id FROM running_jobs WHERE key = ?", jobKey).Scan(&discussionId)
-	
+
 	if err != nil {
 		return "", err
 	}

@@ -81,6 +81,23 @@ func (h *WebhookHandler) OnRetryCommand(gitlabClient *gitlab.Client, w http.Resp
 		return
 	}
 
+	discussionId := commentWebhook.ObjectAttributes.DiscussionId
+	_, err = h.Database.Exec(
+		"INSERT INTO running_jobs (key, retry_count, merge_request_id, retry_goal, discussion_id, note_id) VALUES (?, 1, ?, ?, ?, -1)",
+		jobKey, commentWebhook.MergeRequest.Iid, retryGoal, discussionId,
+	)
+
+	if err != nil {
+		if db.IsRunningJob(h.Database, jobKey) {
+			h.Logger.Warn("job is already running", zap.String("job_name", h.Cfg.JobName), zap.Int64("merge_request", commentWebhook.MergeRequest.Iid))
+			return
+		}
+
+		h.Logger.Error("failed to insert running job", zap.String("job_name", h.Cfg.JobName), zap.Error(err))
+		http.Error(w, "failed to insert running job", http.StatusInternalServerError)
+		return
+	}
+
 	_, err = RetryJob(gitlabClient, commentWebhook.ProjectId, jobId)
 
 	if err != nil {
@@ -89,9 +106,7 @@ func (h *WebhookHandler) OnRetryCommand(gitlabClient *gitlab.Client, w http.Resp
 		return
 	}
 
-	discussionId := commentWebhook.ObjectAttributes.DiscussionId
 	replyNote := fmt.Sprintf("Retrying Job %s Count: 1", h.Cfg.JobName)
-
 	noteId, err := ReplyToDiscussion(gitlabClient, discussionId, commentWebhook.ProjectId, commentWebhook.MergeRequest.Iid, replyNote)
 
 	if err != nil {
@@ -100,17 +115,11 @@ func (h *WebhookHandler) OnRetryCommand(gitlabClient *gitlab.Client, w http.Resp
 		return
 	}
 
-	// otherwise insert it into db
-	_, err = h.Database.Exec("INSERT INTO running_jobs (key, retry_count, merge_request_id, retry_goal, discussion_id, note_id) VALUES (?, 1, ?, ?, ?, ?)",
-		jobKey,
-		commentWebhook.MergeRequest.Iid,
-		retryGoal,
-		discussionId,
-		noteId,
-	)
+	err = db.SetNoteID(h.Database, jobKey, noteId)
 
 	if err != nil {
-		h.Logger.Error("failed to insert job to running jobs", zap.String("job_name", h.Cfg.JobName), zap.Error(err))
+		h.Logger.Error("failed to store discussion reply note", zap.String("job_name", h.Cfg.JobName), zap.Error(err))
+		http.Error(w, "failed to store discussion reply note", http.StatusInternalServerError)
 		return
 	}
 
