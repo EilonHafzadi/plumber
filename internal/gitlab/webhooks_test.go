@@ -332,7 +332,7 @@ func TestProcessWebhook_Build_NotPlumberJob_DoesNothing(t *testing.T) {
 func TestProcessWebhook_Build_StatusNotFinal_DoesNothing(t *testing.T) {
 	fixture := newWebhookTestFixture(t)
 	jobKey := buildJobKey(83, 10, fixture.Cfg.JobName)
-	insertRunningJob(t, fixture.Database, jobKey, 0, 7)
+	insertRunningJob(t, fixture.Database, jobKey, 0, 7, testDiscussionID, testNoteID)
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
 
@@ -351,7 +351,7 @@ func TestProcessWebhook_Build_StatusNotFinal_DoesNothing(t *testing.T) {
 func TestProcessWebhook_Build_Success_Retries_Again(t *testing.T) {
 	fixture := newWebhookTestFixture(t)
 	jobKey := buildJobKey(83, 10, fixture.Cfg.JobName)
-	insertRunningJob(t, fixture.Database, jobKey, 0, 7)
+	insertRunningJob(t, fixture.Database, jobKey, 0, 7, testDiscussionID, testNoteID)
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
 
@@ -383,7 +383,7 @@ func TestProcessWebhook_Build_Success_Retries_Again(t *testing.T) {
 func TestProcessWebhook_Build_Success_ApprovesAndStopsTracking(t *testing.T) {
 	fixture := newWebhookTestFixture(t)
 	jobKey := buildJobKey(83, 10, fixture.Cfg.JobName)
-	insertRunningJob(t, fixture.Database, jobKey, fixture.Cfg.RetryAmount, 7)
+	insertRunningJob(t, fixture.Database, jobKey, fixture.Cfg.RetryAmount, 7, testDiscussionID, testNoteID)
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
 
@@ -414,7 +414,7 @@ func TestProcessWebhook_Build_Success_ApprovesAndStopsTracking(t *testing.T) {
 func TestProcessWebhook_Build_Success_MR_AlreadyApproved_DoesNotReapprove(t *testing.T) {
 	fixture := newWebhookTestFixture(t)
 	jobKey := buildJobKey(83, 10, fixture.Cfg.JobName)
-	insertRunningJob(t, fixture.Database, jobKey, fixture.Cfg.RetryAmount, 7)
+	insertRunningJob(t, fixture.Database, jobKey, fixture.Cfg.RetryAmount, 7, testDiscussionID, testNoteID)
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
 
@@ -440,7 +440,7 @@ func TestProcessWebhook_Build_Success_MR_AlreadyApproved_DoesNotReapprove(t *tes
 func TestProcessWebhook_Build_Failed_UnapprovesMergeRequest(t *testing.T) {
 	fixture := newWebhookTestFixture(t)
 	jobKey := buildJobKey(83, 10, fixture.Cfg.JobName)
-	insertRunningJob(t, fixture.Database, jobKey, 1, 7)
+	insertRunningJob(t, fixture.Database, jobKey, 1, 7, testDiscussionID, testNoteID)
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
 
@@ -469,7 +469,7 @@ func TestProcessWebhook_Build_Failed_UnapprovesMergeRequest(t *testing.T) {
 func TestProcessWebhook_Build_Failed_AlreadyUnapproved_DoesNotReUnapprove(t *testing.T) {
 	fixture := newWebhookTestFixture(t)
 	jobKey := buildJobKey(83, 10, fixture.Cfg.JobName)
-	insertRunningJob(t, fixture.Database, jobKey, 1, 7)
+	insertRunningJob(t, fixture.Database, jobKey, 1, 7, testDiscussionID, testNoteID)
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
 
@@ -493,7 +493,7 @@ func TestProcessWebhook_Build_Failed_AlreadyUnapproved_DoesNotReUnapprove(t *tes
 func TestProcessWebhook_Build_Success_RetryJobFails_DoesNotIncrementCount(t *testing.T) {
 	fixture := newWebhookTestFixture(t)
 	jobKey := buildJobKey(83, 10, fixture.Cfg.JobName)
-	insertRunningJob(t, fixture.Database, jobKey, 0, 7)
+	insertRunningJob(t, fixture.Database, jobKey, 0, 7, testDiscussionID, testNoteID)
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
 
@@ -519,7 +519,7 @@ func TestProcessWebhook_Build_Success_RetryJobFails_DoesNotIncrementCount(t *tes
 func TestProcessWebhook_Build_Success_GetConfigurationFails_JobStillDeleted(t *testing.T) {
 	fixture := newWebhookTestFixture(t)
 	jobKey := buildJobKey(83, 10, fixture.Cfg.JobName)
-	insertRunningJob(t, fixture.Database, jobKey, fixture.Cfg.RetryAmount, 7)
+	insertRunningJob(t, fixture.Database, jobKey, fixture.Cfg.RetryAmount, 7, testDiscussionID, testNoteID)
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
 
@@ -538,7 +538,7 @@ func TestProcessWebhook_Build_Success_GetConfigurationFails_JobStillDeleted(t *t
 func TestProcessWebhook_Build_Success_ApproveMergeRequestFails_JobStillDeleted(t *testing.T) {
 	fixture := newWebhookTestFixture(t)
 	jobKey := buildJobKey(83, 10, fixture.Cfg.JobName)
-	insertRunningJob(t, fixture.Database, jobKey, fixture.Cfg.RetryAmount, 7)
+	insertRunningJob(t, fixture.Database, jobKey, fixture.Cfg.RetryAmount, 7, testDiscussionID, testNoteID)
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
 
@@ -564,7 +564,7 @@ func TestProcessWebhook_Build_Success_ApproveMergeRequestFails_JobStillDeleted(t
 func TestProcessWebhook_Build_Failed_GetConfigurationFails_NoStateChange(t *testing.T) {
 	fixture := newWebhookTestFixture(t)
 	jobKey := buildJobKey(83, 10, fixture.Cfg.JobName)
-	insertRunningJob(t, fixture.Database, jobKey, 1, 7)
+	insertRunningJob(t, fixture.Database, jobKey, 1, 7, testDiscussionID, testNoteID)
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
 
@@ -583,7 +583,7 @@ func TestProcessWebhook_Build_Failed_GetConfigurationFails_NoStateChange(t *test
 func TestProcessWebhook_Build_Failed_UnapproveMergeRequestFails_NoStateChange(t *testing.T) {
 	fixture := newWebhookTestFixture(t)
 	jobKey := buildJobKey(83, 10, fixture.Cfg.JobName)
-	insertRunningJob(t, fixture.Database, jobKey, 1, 7)
+	insertRunningJob(t, fixture.Database, jobKey, 1, 7, testDiscussionID, testNoteID)
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
 
@@ -686,7 +686,7 @@ func TestProcessWebhook_OnRetryCommand_isRunningJob_ReturnsFalse(t *testing.T) {
 func TestProcessWebhook_OnRetryCommand_isRunningJob_ReturnsTrue(t *testing.T) {
 	fixture := newWebhookTestFixture(t)
 	jobKey := buildJobKey(83, 10, fixture.Cfg.JobName)
-	insertRunningJob(t, fixture.Database, jobKey, 1, 7)
+	insertRunningJob(t, fixture.Database, jobKey, 1, 7, testDiscussionID, testNoteID)
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
 
@@ -740,7 +740,7 @@ func TestProcessWebhook_HandleJobWebhook_UpdateFails(t *testing.T) {
 	fixture := newWebhookTestFixture(t)
 	jobKey := buildJobKey(83, 10, fixture.Cfg.JobName)
 
-	insertRunningJob(t, fixture.Database, jobKey, 0, 7)
+	insertRunningJob(t, fixture.Database, jobKey, 0, 7, testDiscussionID, testNoteID)
 	forceReadOnly(t, fixture.Database)
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
@@ -762,7 +762,7 @@ func TestProcessWebhook_HandleJobWebhook_GetRetryCountFails(t *testing.T) {
 	fixture := newWebhookTestFixture(t)
 	jobKey := buildJobKey(83, 10, fixture.Cfg.JobName)
 
-	insertRunningJob(t, fixture.Database, jobKey, 0, 7)
+	insertRunningJob(t, fixture.Database, jobKey, 0, 7, testDiscussionID, testNoteID)
 	updateRetryCount(t, fixture.Database, jobKey, "not-a-number")
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
@@ -780,7 +780,7 @@ func TestProcessWebhook_HandleJobWebhook_GetMergeRequestIid_Fails(t *testing.T) 
 
 	// retry_count is valid so getRetryCount succeeds; merge_request_id is
 	// corrupted so the very next call, getMergeRequestIid, fails.
-	insertRunningJob(t, fixture.Database, jobKey, 1, 7)
+	insertRunningJob(t, fixture.Database, jobKey, 1, 7, testDiscussionID, testNoteID)
 	updateMergeRequestIid(t, fixture.Database, jobKey, "not-a-number")
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
@@ -795,7 +795,7 @@ func TestProcessWebhook_HandleJobWebhook_GetMergeRequestIid_Fails(t *testing.T) 
 func TestProcessWebhook_OnJobInProgress_GetMergeRequestIid_Fails(t *testing.T) {
 	fixture := newWebhookTestFixture(t)
 	jobKey := buildJobKey(83, 10, fixture.Cfg.JobName)
-	insertRunningJob(t, fixture.Database, jobKey, 0, 7)
+	insertRunningJob(t, fixture.Database, jobKey, 0, 7, testDiscussionID, testNoteID)
 	updateMergeRequestIid(t, fixture.Database, jobKey, "not-a-number")
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
@@ -819,7 +819,7 @@ func TestProcessWebhook_OnJobInProgress_GetMergeRequestIid_Fails(t *testing.T) {
 func TestProcessWebhook_OnJobFinished_DeleteJobFails(t *testing.T) {
 	fixture := newWebhookTestFixture(t)
 	jobKey := buildJobKey(83, 10, fixture.Cfg.JobName)
-	insertRunningJob(t, fixture.Database, jobKey, fixture.Cfg.RetryAmount, 7)
+	insertRunningJob(t, fixture.Database, jobKey, fixture.Cfg.RetryAmount, 7, testDiscussionID, testNoteID)
 	forceReadOnly(t, fixture.Database)
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))
@@ -843,7 +843,7 @@ func TestProcessWebhook_OnJobFinished_DeleteJobFails(t *testing.T) {
 func TestProcessWebhook_OnJobFailure_DeleteJobFails(t *testing.T) {
 	fixture := newWebhookTestFixture(t)
 	jobKey := buildJobKey(83, 10, fixture.Cfg.JobName)
-	insertRunningJob(t, fixture.Database, jobKey, 1, 7)
+	insertRunningJob(t, fixture.Database, jobKey, 1, 7, testDiscussionID, testNoteID)
 	forceReadOnly(t, fixture.Database)
 
 	client := gitlabtesting.NewTestClient(t, gitlabapi.WithBaseURL(fixture.Cfg.GitlabInstance))

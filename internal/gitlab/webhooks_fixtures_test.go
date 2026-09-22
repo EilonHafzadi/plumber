@@ -27,6 +27,11 @@ type WebhookTestFixture struct {
 	Database *sql.DB
 }
 
+const (
+	testDiscussionID = "discussion-1"
+	testNoteID       = int64(123)
+)
+
 func newWebhookTestFixture(t *testing.T) *WebhookTestFixture {
 	t.Helper()
 
@@ -167,12 +172,15 @@ func updateMergeRequestIid(t *testing.T, database *sql.DB, key, value string) {
 	}
 }
 
-func insertRunningJob(t *testing.T, database *sql.DB, key string, retryCount int, mergeRequestIID int64) {
+func insertRunningJob(t *testing.T, database *sql.DB, key string, retryCount int, mergeRequestIID int64, discussionID string, noteID int64) {
 	t.Helper()
-	if _, err := database.Exec(
+
+	_, err := database.Exec(
 		"INSERT INTO running_jobs (key, retry_count, merge_request_id, discussion_id, note_id) VALUES (?, ?, ?, ?, ?)",
-		key, retryCount, mergeRequestIID, "discussion-1", 123,
-	); err != nil {
+		key, retryCount, mergeRequestIID, discussionID, noteID,
+	)
+
+	if err != nil {
 		t.Fatal(err)
 	}
 }
