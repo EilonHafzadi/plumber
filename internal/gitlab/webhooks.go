@@ -276,43 +276,51 @@ func (h *WebhookHandler) OnJobFinished(jobWebhook *JobWebhook, mergeRequestIid i
 	if retryGoal < h.Cfg.RetryAmount {
 		err := db.DeleteJob(h.Database, jobKey)
 		if err != nil {
-			h.Logger.Error("failed to delete job from running jobs", zap.String("job_name", jobName), zap.Error(err))
+			h.Logger.Error("failed to delete job from running jobs", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
 			return
 		}
 
-		h.Logger.Info("quality gate passed", zap.Int("merge_request", int(mergeRequestIid)))
+		h.Logger.Info("quality gate passed", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid))
 		return
 	}
 
 	approved, err := ApproveMergeRequest(h.Client, jobWebhook, mergeRequestIid)
 	if err != nil {
-		h.Logger.Error("failed to approve merge request", zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
+		h.Logger.Error("failed to approve merge request", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
 		return
 	}
 
 	discussionId, err := db.GetDiscussionId(h.Database, jobKey)
 	if err != nil {
-		h.Logger.Error("failed to get discussion id", zap.Error(err))
+		h.Logger.Error("failed to get discussion id", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
 		return
 	}
 
 	originalNote, err := db.GetNoteId(h.Database, jobKey)
 	if err != nil {
-		h.Logger.Error("failed to get note id", zap.Error(err))
+		h.Logger.Error("failed to get note id", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
 		return
-	}
-
-	if approved {
-		h.Logger.Info("quality gate passed, merge request approved", zap.Int64("merge_request", mergeRequestIid))
-		UpdateDiscussionReplyNote(h.Client, jobWebhook.ProjectId, mergeRequestIid, discussionId, "Quality Gate Passed. MR approved.", originalNote)
-	} else {
-		h.Logger.Info("quality gate passed, merge request is already approved", zap.Int64("merge_request", mergeRequestIid))
-		UpdateDiscussionReplyNote(h.Client, jobWebhook.ProjectId, mergeRequestIid, discussionId, "Quality Gate Passed.", originalNote)
 	}
 
 	err = db.DeleteJob(h.Database, jobKey)
 	if err != nil {
 		h.Logger.Error("failed to delete job from running jobs", zap.String("job_name", jobName), zap.Error(err))
+		return
+	}
+
+	note := ""
+
+	if approved {
+		h.Logger.Info("quality gate passed, merge request approved", zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
+		note += "Quality Gate Passed. MR approved."
+	} else {
+		h.Logger.Info("quality gate passed, merge request is already approved", zap.Int64("merge_request", mergeRequestIid))
+		note += "Quality Gate Passed. Already approved."
+	}
+
+	err = UpdateDiscussionReplyNote(h.Client, jobWebhook.ProjectId, mergeRequestIid, discussionId, note, originalNote)
+	if err != nil {
+		h.Logger.Error("failed to update reply note", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
 	}
 
 }
@@ -324,35 +332,42 @@ func (h *WebhookHandler) OnJobFailure(jobWebhook *JobWebhook, mergeRequestIid in
 	jobName := jobWebhook.Name
 
 	if err != nil {
-		h.Logger.Error("failed to unapprove merge request", zap.String("job_name", jobName), zap.Error(err))
+		h.Logger.Error("failed to unapprove merge request", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid), zap.Int("retry_count", retryCount), zap.Error(err))
+		return
+	}
+
+	discussionId, err := db.GetDiscussionId(h.Database, jobKey)
+	if err != nil {
+		h.Logger.Error("failed to get discussion id", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
+		return
+	}
+
+	originalNote, err := db.GetNoteId(h.Database, jobKey)
+	if err != nil {
+		h.Logger.Error("failed to get note id", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
 		return
 	}
 
 	err = db.DeleteJob(h.Database, jobKey)
 
 	if err != nil {
-		h.Logger.Error("failed to delete job from running jobs", zap.String("job_name", jobWebhook.Name), zap.Error(err))
+		h.Logger.Error("failed to delete job from running jobs", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
 		return
 	}
 
-	discussionId, err := db.GetDiscussionId(h.Database, jobKey)
-	if err != nil {
-		h.Logger.Error("failed to get discussion id", zap.Error(err))
-		return
-	}
-
-	originalNote, err := db.GetNoteId(h.Database, jobKey)
-	if err != nil {
-		h.Logger.Error("failed to get note id", zap.Error(err))
-		return
-	}
+	note := ""
 
 	if unapproved {
-		h.Logger.Error("quality gate failed, merge request unapproved", zap.String("job_name", jobName), zap.Int("retry_count", retryCount))
-		UpdateDiscussionReplyNote(h.Client, jobWebhook.ProjectId, mergeRequestIid, discussionId, "Quality Gate Failed. MR unapproved.", originalNote)
+		h.Logger.Error("quality gate failed, merge request unapproved", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid))
+		note += "Quality Gate Failed. MR unapproved."
 	} else {
-		h.Logger.Error("quality gate failed, merge request is already unapproved", zap.String("job_name", jobName), zap.Int("retry_count", retryCount))
-		UpdateDiscussionReplyNote(h.Client, jobWebhook.ProjectId, mergeRequestIid, discussionId, "Quality Gate Failed.", originalNote)
+		h.Logger.Error("quality gate failed, merge request is already unapproved", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid))
+		note += "Quality Gate Failed. Already unapproved."
+	}
+
+	err = UpdateDiscussionReplyNote(h.Client, jobWebhook.ProjectId, mergeRequestIid, discussionId, note, originalNote)
+	if err != nil {
+		h.Logger.Error("failed to update reply note", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid), zap.Int("retry_count", retryCount))
 	}
 
 }
