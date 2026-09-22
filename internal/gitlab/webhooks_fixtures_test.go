@@ -27,6 +27,11 @@ type WebhookTestFixture struct {
 	Database *sql.DB
 }
 
+const (
+	testDiscussionID = "discussion-1"
+	testNoteID       = int64(123)
+)
+
 func newWebhookTestFixture(t *testing.T) *WebhookTestFixture {
 	t.Helper()
 
@@ -96,18 +101,20 @@ func (f *WebhookTestFixture) sendRequest(client *gitlabtesting.TestClient, reque
 	return recorder
 }
 
-func commentPayload(objectKind, note string, headPipelineID int) string {
+func commentPayload(objectKind, note string, discussionId string, mergeReqIID int64, headPipelineID int) string {
 	return fmt.Sprintf(`{
 		"object_kind": %q,
 		"project_id": 83,
 		"object_attributes": {
 			"note": %q,
-			"noteable_type": "MergeRequest"
+			"noteable_type": "MergeRequest",
+			"discussion_id": %q
 		},
 		"merge_request": {
-			"head_pipeline_id": %d
+			"head_pipeline_id": %d,
+			"iid": %d
 		}
-	}`, objectKind, note, headPipelineID)
+	}`, objectKind, note, discussionId, headPipelineID, mergeReqIID)
 }
 
 func jobPayload(status string, projectID, pipelineID int, buildID int64, jobName string) string {
@@ -165,12 +172,15 @@ func updateMergeRequestIid(t *testing.T, database *sql.DB, key, value string) {
 	}
 }
 
-func insertRunningJob(t *testing.T, database *sql.DB, key string, retryCount int, mergeRequestIID int64) {
+func insertRunningJob(t *testing.T, database *sql.DB, key string, retryCount int, mergeRequestIID int64, discussionID string, noteID int64) {
 	t.Helper()
-	if _, err := database.Exec(
-		"INSERT INTO running_jobs (key, retry_count, merge_request_id) VALUES (?, ?, ?)",
-		key, retryCount, mergeRequestIID,
-	); err != nil {
+
+	_, err := database.Exec(
+		"INSERT INTO running_jobs (key, retry_count, merge_request_id, discussion_id, note_id) VALUES (?, ?, ?, ?, ?)",
+		key, retryCount, mergeRequestIID, discussionID, noteID,
+	)
+
+	if err != nil {
 		t.Fatal(err)
 	}
 }
