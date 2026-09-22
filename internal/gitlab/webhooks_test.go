@@ -391,7 +391,7 @@ func TestProcessWebhook_Build_Success_MR_AlreadyApproved_DoesNotReapprove(t *tes
 	// No ApproveMergeRequest expectation set: it must not be called again.
 	client.MockDiscussions.EXPECT().
 		UpdateMergeRequestDiscussionNote(83, int64(7), "discussion-1", int64(123), &gitlabapi.UpdateMergeRequestDiscussionNoteOptions{
-			Body: new("Quality Gate Passed."),
+			Body: new("Quality Gate Passed. Already approved."),
 		}).
 		Return(&gitlabapi.Note{}, &gitlabapi.Response{}, nil)
 
@@ -418,6 +418,12 @@ func TestProcessWebhook_Build_Failed_UnapprovesMergeRequest(t *testing.T) {
 		UnapproveMergeRequest(83, int64(7)).
 		Return(&gitlabapi.Response{}, nil)
 
+	client.MockDiscussions.EXPECT().
+		UpdateMergeRequestDiscussionNote(83, int64(7), "discussion-1", int64(123), &gitlabapi.UpdateMergeRequestDiscussionNoteOptions{
+			Body: new("Quality Gate Failed. MR unapproved."),
+		}).
+		Return(&gitlabapi.Note{}, &gitlabapi.Response{}, nil)
+
 	payload := jobPayload("failed", 83, 10, 55, fixture.Cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
 	rec := fixture.sendRequest(client, request)
@@ -436,6 +442,12 @@ func TestProcessWebhook_Build_Failed_AlreadyUnapproved_DoesNotReUnapprove(t *tes
 	client.MockMergeRequestApprovals.EXPECT().
 		GetConfiguration(83, int64(7)).
 		Return(&gitlabapi.MergeRequestApprovals{UserHasApproved: false}, &gitlabapi.Response{}, nil)
+
+	client.MockDiscussions.EXPECT().
+		UpdateMergeRequestDiscussionNote(83, int64(7), "discussion-1", int64(123), &gitlabapi.UpdateMergeRequestDiscussionNoteOptions{
+			Body: new("Quality Gate Failed. Already unapproved."),
+		}).
+		Return(&gitlabapi.Note{}, &gitlabapi.Response{}, nil)
 
 	payload := jobPayload("failed", 83, 10, 55, fixture.Cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
@@ -773,7 +785,7 @@ func TestProcessWebhook_OnJobInProgress_GetMergeRequestIid_Fails(t *testing.T) {
 		Name:          fixture.Cfg.JobName,
 	}
 
-	fixture.handler(client).OnJobInProgress(jobWebhook, jobKey, 0)
+	fixture.handler(client).OnJobInProgress(jobWebhook, jobKey, 0, "1", 0)
 
 	retryCount, err := db.GetRetryCount(fixture.Database, jobKey)
 	assert.NoError(t, err)
@@ -795,12 +807,6 @@ func TestProcessWebhook_OnJobFinished_DeleteJobFails(t *testing.T) {
 	client.MockMergeRequestApprovals.EXPECT().
 		ApproveMergeRequest(83, int64(7), nil).
 		Return(&gitlabapi.MergeRequestApprovals{UserHasApproved: true}, &gitlabapi.Response{}, nil)
-
-	client.MockDiscussions.EXPECT().
-		UpdateMergeRequestDiscussionNote(83, int64(7), "discussion-1", int64(123), &gitlabapi.UpdateMergeRequestDiscussionNoteOptions{
-			Body: new("Quality Gate Passed. MR approved."),
-		}).
-		Return(&gitlabapi.Note{}, &gitlabapi.Response{}, nil)
 
 	payload := jobPayload("success", 83, 10, 55, fixture.Cfg.JobName)
 	request := httptest.NewRequest("POST", "/webhook", strings.NewReader(payload))
