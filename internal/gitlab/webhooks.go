@@ -278,6 +278,11 @@ func (h *WebhookHandler) OnJobFinished(jobWebhook *JobWebhook, mergeRequestIid i
 		}
 
 		h.Logger.Info("quality gate passed", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid))
+
+		err = UpdateDiscussionReplyNote(h.Client, jobWebhook.ProjectId, mergeRequestIid, discussionId, "Quality Gate Passed.", originalNote)
+		if err != nil {
+			h.Logger.Error("failed to update reply note", zap.String("job_name", jobName), zap.Int64("merge_request", mergeRequestIid), zap.Error(err))
+		}
 		return
 	}
 
